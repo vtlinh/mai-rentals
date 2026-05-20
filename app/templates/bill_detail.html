@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Bill {{ bill.id }}{% endblock %}
+{% block body %}
+<h1>{{ bill.kind }} &mdash; ${{ "%.2f"|format(bill.amount) }}</h1>
+<p class="muted">
+  Period {{ bill.start_date }} to {{ bill.end_date }} (inclusive) &middot; Due {{ bill_due_date(bill.end_date) }}
+  {% if bill.note %}<br>{{ bill.note }}{% endif %}
+</p>
+<p>[<a href="{{ url_for('main.bills_edit', bid=bill.id) }}">edit</a>]</p>
+
+<table>
+  <tr><th>Unit</th><th class="right">Person-days</th><th class="right">Owed</th></tr>
+  {% for sh in shares %}
+  <tr>
+    <td>{{ sh.unit_name }}</td>
+    <td class="right">{{ sh.person_days }}</td>
+    <td class="right">${{ "%.2f"|format(sh.amount) }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endblock %}

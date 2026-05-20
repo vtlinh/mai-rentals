@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Bills{% endblock %}
+{% block body %}
+<h1>Bills</h1>
+<p><a href="{{ url_for('main.bills_new') }}">+ Add bill</a></p>
+<table>
+  <tr><th>Kind</th><th>Period (end inclusive)</th><th>Due</th><th class="right">Amount</th><th>Units</th><th></th></tr>
+  {% for b in bills %}
+  <tr>
+    <td><a href="{{ url_for('main.bills_detail', bid=b.id) }}">{{ b.kind }}</a></td>
+    <td>{{ b.start_date }} &rarr; {{ b.end_date }}</td>
+    <td>{{ bill_due_date(b.end_date) }}</td>
+    <td class="right">${{ "%.2f"|format(b.amount) }}</td>
+    <td>{{ b.assignments | map(attribute='unit.name') | join(', ') }}</td>
+    <td>
+      <a href="{{ url_for('main.bills_edit', bid=b.id) }}">edit</a>
+      <form class="inline" method="post" action="{{ url_for('main.bills_delete', bid=b.id) }}"
+            onsubmit="return confirm('Delete bill?');">
+        <button class="btn-danger" type="submit">delete</button>
+      </form>
+    </td>
+  </tr>
+  {% else %}
+  <tr><td colspan="6" class="muted">No bills yet.</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

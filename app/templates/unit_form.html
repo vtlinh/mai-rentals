@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}{{ "Edit" if unit else "New" }} unit{% endblock %}
+{% block body %}
+<h1>{{ "Edit" if unit else "New" }} unit</h1>
+<form method="post">
+  <label>Name <input name="name" required value="{{ unit.name if unit else '' }}"></label>
+  <label>Note <input name="note" value="{{ unit.note if unit else '' }}"></label>
+  <p><button type="submit">Save</button> <a href="{{ url_for('main.units_list') }}">Cancel</a></p>
+</form>
+{% endblock %}

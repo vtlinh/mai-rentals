@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Units{% endblock %}
+{% block body %}
+<h1>Units</h1>
+<p><a href="{{ url_for('main.units_new') }}">+ Add unit</a></p>
+
+{% for unit in units %}
+<h2>{{ unit.name }}
+  <small>
+    [<a href="{{ url_for('main.units_edit', uid=unit.id) }}">edit</a>]
+    <form class="inline" method="post" action="{{ url_for('main.units_delete', uid=unit.id) }}"
+          onsubmit="return confirm('Delete unit {{ unit.name }} and all its data?');">
+      <button class="btn-danger" type="submit">delete</button>
+    </form>
+  </small>
+</h2>
+{% if unit.note %}<p class="muted">{{ unit.note }}</p>{% endif %}
+
+<table>
+  <tr><th>Tenants</th><th>Start</th><th>End (inclusive)</th><th></th></tr>
+  {% for occ in unit.occupancies %}
+  <tr>
+    <td>{{ occ.tenant_count }}</td>
+    <td>{{ occ.start_date }}</td>
+    <td>{{ occ.end_date }}</td>
+    <td>
+      <a href="{{ url_for('main.occ_edit', oid=occ.id) }}">edit</a>
+      <form class="inline" method="post" action="{{ url_for('main.occ_delete', oid=occ.id) }}"
+            onsubmit="return confirm('Delete occupancy?');">
+        <button class="btn-danger" type="submit">delete</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+<p><a href="{{ url_for('main.occ_new', uid=unit.id) }}">+ Add occupancy</a></p>
+{% else %}
+<p class="muted">No units yet.</p>
+{% endfor %}
+{% endblock %}

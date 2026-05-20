@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Sign in{% endblock %}
+{% block body %}
+<h1>Sign in</h1>
+{% if missing_config %}
+  <p class="flash">
+    Google OAuth is not configured. Set <code>GOOGLE_CLIENT_ID</code> and
+    <code>GOOGLE_CLIENT_SECRET</code> environment variables before running the app.
+  </p>
+{% else %}
+  <p>You must sign in with an authorized Google account to view this site.</p>
+  <p><a href="{{ url_for('auth.login') }}">Sign in with Google</a></p>
+{% endif %}
+{% endblock %}

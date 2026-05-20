@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block body %}
+<h1>Amounts owed by month</h1>
+
+{% if not months %}
+  <p class="muted">No bills yet. <a href="{{ url_for('main.bills_new') }}">Add one</a>.</p>
+{% endif %}
+
+{% for m in months %}
+  <section style="margin-bottom: 2rem;">
+    <h2>{{ m.year }}-{{ "%02d"|format(m.month) }}</h2>
+
+    <h3>Totals by unit</h3>
+    {% if m.unit_rows %}
+    <table>
+      <tr>
+        <th>Unit</th>
+        {% for k in m.kinds %}<th class="right">{{ k }}</th>{% endfor %}
+        <th class="right">Total</th>
+      </tr>
+      {% for row in m.unit_rows %}
+      <tr>
+        <td>{{ row.unit_name }}</td>
+        {% for amt in row.by_kind %}
+        <td class="right">{% if amt %}${{ "%.2f"|format(amt) }}{% else %}&mdash;{% endif %}</td>
+        {% endfor %}
+        <td class="right"><strong>${{ "%.2f"|format(row.total) }}</strong></td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}
+    <p class="muted">No units owe money this month.</p>
+    {% endif %}
+
+    <h3>Bills due</h3>
+    <ul>
+      {% for row in m.bill_rows %}
+      <li>
+        <a href="{{ url_for('main.bills_detail', bid=row.bill.id) }}">{{ row.bill.kind }}</a>
+        &mdash; ${{ "%.2f"|format(row.bill.amount) }}
+        <span class="muted">
+          (period {{ row.bill.start_date }} to {{ row.bill.end_date }} inclusive{% if row.bill.note %}, {{ row.bill.note }}{% endif %})
+        </span>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+{% endfor %}
+{% endblock %}

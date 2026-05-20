@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Occupancy for {{ unit.name }}{% endblock %}
+{% block body %}
+<h1>{{ "Edit" if occ else "New" }} occupancy &mdash; {{ unit.name }}</h1>
+<form method="post">
+  <label>Tenant count
+    <input type="number" min="1" name="tenant_count" required
+           value="{{ occ.tenant_count if occ else 1 }}"></label>
+  <label>Start date
+    <input type="date" name="start_date" required
+           value="{{ occ.start_date if occ else '' }}"></label>
+  <label>End date (inclusive)
+    <input type="date" name="end_date" required
+           value="{{ occ.end_date if occ else '' }}"></label>
+  <p><button type="submit">Save</button> <a href="{{ url_for('main.units_list') }}">Cancel</a></p>
+</form>
+{% endblock %}

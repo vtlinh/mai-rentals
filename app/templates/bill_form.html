@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}{{ "Edit" if bill else "New" }} bill{% endblock %}
+{% block body %}
+<h1>{{ "Edit" if bill else "New" }} bill</h1>
+<form method="post">
+  <label>Kind
+    <select name="kind">
+      {% for k in ["water", "electric", "gas", "water+electric", "water+gas", "electric+gas", "water+electric+gas"] %}
+        <option value="{{ k }}" {% if bill and bill.kind == k %}selected{% endif %}>{{ k }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Amount ($)
+    <input type="number" step="0.01" min="0" name="amount" required
+           value="{{ bill.amount if bill else '' }}"></label>
+  <label>Bill period start
+    <input type="date" name="start_date" required
+           value="{{ bill.start_date if bill else '' }}"></label>
+  <label>Bill period end (inclusive)
+    <input type="date" name="end_date" required
+           value="{{ bill.end_date if bill else '' }}"></label>
+  <p class="muted">Due date is automatically the 1st of the month after the bill period ends.</p>
+  <label>Note <input name="note" value="{{ bill.note if bill else '' }}"></label>
+
+  <fieldset style="margin-top:1rem;">
+    <legend>Assign to units</legend>
+    {% for u in units %}
+      <label style="display:block;">
+        <input type="checkbox" name="unit_ids" value="{{ u.id }}"
+               {% if u.id in selected_ids %}checked{% endif %}>
+        {{ u.name }}
+      </label>
+    {% else %}
+      <p class="muted">No units defined. <a href="{{ url_for('main.units_new') }}">Add one</a> first.</p>
+    {% endfor %}
+  </fieldset>
+
+  <p><button type="submit">Save</button> <a href="{{ url_for('main.bills_list') }}">Cancel</a></p>
+</form>
+{% endblock %}

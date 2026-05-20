@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}{{ "Edit" if user else "New" }} user{% endblock %}
+{% block body %}
+<h1>{{ "Edit" if user else "Add" }} authorized user</h1>
+<form method="post">
+  <label>Email
+    <input type="email" name="email" required
+           value="{{ user.email if user else '' }}"></label>
+  <p><button type="submit">Save</button> <a href="{{ url_for('main.users_list') }}">Cancel</a></p>
+</form>
+{% endblock %}
