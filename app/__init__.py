@@ -4,12 +4,9 @@ from pathlib import Path
 from dotenv import load_dotenv
 from flask import Flask
 
-# Load env from `.env` or `.env.txt` (Windows sometimes appends .txt).
-_root = Path(__file__).resolve().parent.parent
-for _candidate in (_root / ".env", _root / ".env.txt"):
-    if _candidate.exists():
-        load_dotenv(_candidate)
-        break
+_env_file = Path(__file__).resolve().parent.parent / ".env"
+if _env_file.exists():
+    load_dotenv(_env_file)
 
 from app.auth import auth_bp, current_email, init_oauth, is_admin  # noqa: E402
 from app.billing import bill_due_date  # noqa: E402
