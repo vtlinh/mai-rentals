@@ -1,4 +1,4 @@
-app = "rental-bills"
+app = "mai-rentals"
 primary_region = "sjc"
 
 [build]
