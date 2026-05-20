@@ -1,3 +1,4 @@
+import os as _os
 from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import date
@@ -6,7 +7,7 @@ from pathlib import Path
 from sqlalchemy import Date, Float, ForeignKey, Integer, String, create_engine, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, relationship
 
-DB_PATH = Path(__file__).resolve().parent.parent / "rental.db"
+DB_PATH = Path(_os.environ.get("RENTAL_DB_PATH") or Path(__file__).resolve().parent.parent / "rental.db")
 engine = create_engine(f"sqlite:///{DB_PATH}", echo=False)
 
 
@@ -20,15 +21,20 @@ class AuthorizedUser(Base):
     email: Mapped[str] = mapped_column(String, unique=True)
 
 
-ADMIN_EMAIL = "vtlinh87@gmail.com"
-SEED_EMAILS = ("vtlinh87@gmail.com", "nguyenmaihuong282@gmail.com")
+SEED_EMAILS = ("nguyenmaihuong282@gmail.com",)
+
+
+def admin_email() -> str:
+    """Admin email from the ADMIN_EMAIL env var. Always lowercased for comparisons."""
+    return _os.environ.get("ADMIN_EMAIL", "").strip().lower()
 
 
 def seed_authorized_users() -> None:
+    """Ensure the admin and all SEED_EMAILS exist in the allowlist."""
     with Session(engine) as s:
         existing = {u.email for u in s.scalars(select(AuthorizedUser)).all()}
-        for email in SEED_EMAILS:
-            if email not in existing:
+        for email in (admin_email(), *SEED_EMAILS):
+            if email and email not in existing:
                 s.add(AuthorizedUser(email=email))
         s.commit()
 

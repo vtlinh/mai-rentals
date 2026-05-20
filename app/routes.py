@@ -7,7 +7,7 @@ from sqlalchemy.orm import selectinload
 
 from app.auth import current_email, is_admin, is_authorized
 from app.billing import bill_due_date, split_bill
-from app.db import ADMIN_EMAIL, AuthorizedUser, Bill, BillUnit, Occupancy, Unit, get_session
+from app.db import AuthorizedUser, Bill, BillUnit, Occupancy, Unit, admin_email, get_session
 
 bp = Blueprint("main", __name__)
 
@@ -295,7 +295,7 @@ def users_list():
     _require_admin()
     with get_session() as s:
         users = s.scalars(select(AuthorizedUser).order_by(AuthorizedUser.email)).all()
-        return render_template("users.html", users=users, admin_email=ADMIN_EMAIL)
+        return render_template("users.html", users=users, admin_email=admin_email())
 
 
 @bp.route("/users/new", methods=["GET", "POST"])
@@ -323,7 +323,8 @@ def users_edit(uid: int):
             return redirect(url_for("main.users_list"))
         if request.method == "POST":
             new_email = request.form["email"].strip().lower()
-            if user.email == ADMIN_EMAIL and new_email != ADMIN_EMAIL:
+            admin = admin_email()
+            if user.email == admin and new_email != admin:
                 flash("Cannot change the admin's email.")
                 return redirect(url_for("main.users_list"))
             user.email = new_email
@@ -339,7 +340,7 @@ def users_delete(uid: int):
         user = s.get(AuthorizedUser, uid)
         if user is None:
             return redirect(url_for("main.users_list"))
-        if user.email == ADMIN_EMAIL:
+        if user.email == admin_email():
             flash("Cannot remove the admin.")
             return redirect(url_for("main.users_list"))
         s.delete(user)

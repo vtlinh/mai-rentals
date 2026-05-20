@@ -5,7 +5,7 @@ from authlib.integrations.flask_client import OAuth
 from flask import Blueprint, abort, flash, redirect, render_template, request, session, url_for
 from sqlalchemy import select
 
-from app.db import ADMIN_EMAIL, AuthorizedUser, get_session
+from app.db import AuthorizedUser, admin_email, get_session
 
 oauth = OAuth()
 auth_bp = Blueprint("auth", __name__)
@@ -32,7 +32,8 @@ def is_authorized(email: str) -> bool:
 
 
 def is_admin(email: str | None) -> bool:
-    return email == ADMIN_EMAIL
+    admin = admin_email()
+    return bool(admin) and email == admin
 
 
 def login_required(view):
