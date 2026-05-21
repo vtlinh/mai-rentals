@@ -1,6 +1,18 @@
 {% extends "base.html" %}
 {% block title %}Dashboard{% endblock %}
 {% block body %}
+<h1>Outstanding balance</h1>
+{% if outstanding_rows %}
+  <table>
+    <tr><th>Unit</th><th class="right">Still owes</th></tr>
+    {% for name, amount in outstanding_rows %}
+    <tr><td>{{ name }}</td><td class="right"><strong>${{ "%.2f"|format(amount) }}</strong></td></tr>
+    {% endfor %}
+  </table>
+{% else %}
+  <p style="color: #2a7a2a;">No outstanding balance for any units.</p>
+{% endif %}
+
 <h1>Amounts owed by month</h1>
 
 {% if not months %}
@@ -22,8 +34,26 @@
       {% for row in m.unit_rows %}
       <tr>
         <td>{{ row.unit_name }}</td>
-        {% for amt in row.by_kind %}
-        <td class="right">{% if amt %}${{ "%.2f"|format(amt) }}{% else %}&mdash;{% endif %}</td>
+        {% for cell in row.cells %}
+        <td class="right">
+          {% if cell.amount %}
+            ${{ "%.2f"|format(cell.amount) }}
+            <a href="{{ url_for('main.payment_edit', uid=row.unit_id, year=m.year, month=m.month, kind=cell.kind) }}"
+               style="margin-left: 0.4rem; font-size: 0.85em;">
+              [{{ "edit" if cell.has_payment else "pay" }}]
+            </a>
+            <br>
+            {% if cell.remaining <= 0 %}
+              <span style="color: #2a7a2a; font-size: 0.85em;">(paid)</span>
+            {% else %}
+              <span style="color: #d97a00; font-size: 0.85em;">
+                (remaining: ${{ "%.2f"|format(cell.remaining) }})
+              </span>
+            {% endif %}
+          {% else %}
+            &mdash;
+          {% endif %}
+        </td>
         {% endfor %}
         <td class="right"><strong>${{ "%.2f"|format(row.total) }}</strong></td>
       </tr>

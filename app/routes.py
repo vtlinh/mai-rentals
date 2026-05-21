@@ -7,7 +7,16 @@ from sqlalchemy.orm import selectinload
 
 from app.auth import current_email, is_admin, is_authorized
 from app.billing import bill_due_date, split_bill
-from app.db import AuthorizedUser, Bill, BillUnit, Occupancy, Unit, admin_email, get_session
+from app.db import (
+    AuthorizedUser,
+    Bill,
+    BillUnit,
+    Occupancy,
+    Payment,
+    Unit,
+    admin_email,
+    get_session,
+)
 
 bp = Blueprint("main", __name__)
 
@@ -57,8 +66,22 @@ def dashboard():
             due = bill_due_date(b.end_date)
             by_month[(due.year, due.month)].append(b)
 
+        # unit name -> id (for payment lookups)
+        units_by_id = {u.id: u for u in s.scalars(select(Unit)).all()}
+        name_to_id = {u.name: u.id for u in units_by_id.values()}
+
+        # All payments keyed by (unit_id, year, month, kind).
+        all_payments = s.scalars(select(Payment)).all()
+        pay_map: dict[tuple[int, int, int, str], Payment] = {
+            (p.unit_id, p.year, p.month, p.kind): p for p in all_payments
+        }
+
+        # Outstanding-by-unit totals across all months.
+        outstanding: dict[str, float] = defaultdict(float)
+
         months = []
         for key in sorted(by_month.keys(), reverse=True):
+            year, month = key
             bills = sorted(by_month[key], key=lambda b: (b.kind.lower(), b.end_date))
             bill_rows = []
             # totals[unit_name][kind] = amount
@@ -79,24 +102,49 @@ def dashboard():
                 row_total = sum(by_kind.values())
                 if round(row_total, 2) == 0:
                     continue
+                uid = name_to_id.get(unit_name)
+                cells = []
+                for k in kinds_sorted:
+                    owed = round(by_kind.get(k, 0.0), 2)
+                    payment = pay_map.get((uid, year, month, k)) if uid else None
+                    paid = round(payment.amount, 2) if payment else 0.0
+                    remaining = round(owed - paid, 2)
+                    cells.append(
+                        {
+                            "kind": k,
+                            "amount": owed,
+                            "paid": paid,
+                            "remaining": remaining,
+                            "has_payment": payment is not None,
+                        }
+                    )
+                    if owed > 0:
+                        outstanding[unit_name] += max(remaining, 0.0)
                 unit_rows.append(
                     {
                         "unit_name": unit_name,
-                        "by_kind": [round(by_kind.get(k, 0.0), 2) for k in kinds_sorted],
+                        "unit_id": uid,
+                        "cells": cells,
                         "total": round(row_total, 2),
                     }
                 )
 
             months.append(
                 {
-                    "year": key[0],
-                    "month": key[1],
+                    "year": year,
+                    "month": month,
                     "kinds": kinds_sorted,
                     "unit_rows": unit_rows,
                     "bill_rows": bill_rows,
                 }
             )
-        return render_template("dashboard.html", months=months)
+
+        outstanding_rows = [
+            (name, round(amt, 2)) for name, amt in sorted(outstanding.items()) if round(amt, 2) > 0
+        ]
+        return render_template(
+            "dashboard.html", months=months, outstanding_rows=outstanding_rows
+        )
 
 
 # ---------------- Units ----------------
@@ -346,3 +394,69 @@ def users_delete(uid: int):
         s.delete(user)
         flash(f"Removed {user.email}.")
     return redirect(url_for("main.users_list"))
+
+
+# ---------------- Payments ----------------
+
+
+@bp.route("/payments/<int:uid>/<int:year>/<int:month>/<kind>", methods=["GET", "POST"])
+def payment_edit(uid: int, year: int, month: int, kind: str):
+    """Create or edit a payment for a (unit, year, month, kind) cell."""
+    with get_session() as s:
+        unit = s.get(Unit, uid)
+        if unit is None:
+            return redirect(url_for("main.dashboard"))
+        payment = s.scalar(
+            select(Payment).where(
+                Payment.unit_id == uid,
+                Payment.year == year,
+                Payment.month == month,
+                Payment.kind == kind,
+            )
+        )
+        if request.method == "POST":
+            amount = float(request.form["amount"])
+            if payment is None:
+                s.add(
+                    Payment(unit_id=uid, year=year, month=month, kind=kind, amount=amount)
+                )
+                flash(f"Recorded ${amount:.2f} payment for {unit.name} ({kind}).")
+            else:
+                payment.amount = amount
+                flash(f"Updated payment for {unit.name} ({kind}).")
+            return redirect(url_for("main.dashboard"))
+        # Owed amount for pre-fill: recompute from bills.
+        owed = _compute_cell_amount(s, uid, year, month, kind)
+        return render_template(
+            "payment_form.html",
+            unit=unit,
+            year=year,
+            month=month,
+            kind=kind,
+            owed=owed,
+            payment=payment,
+        )
+
+
+def _compute_cell_amount(s, unit_id: int, year: int, month: int, kind: str) -> float:
+    """Recompute what `unit_id` owes for (year, month, kind) from current bills + occupancies."""
+    bills = s.scalars(
+        select(Bill)
+        .where(Bill.kind == kind)
+        .options(selectinload(Bill.assignments).selectinload(BillUnit.unit))
+    ).all()
+    bills = [b for b in bills if bill_due_date(b.end_date).year == year
+             and bill_due_date(b.end_date).month == month]
+    if not bills:
+        return 0.0
+    unit_ids = {a.unit_id for b in bills for a in b.assignments}
+    occ_map: dict[int, list[Occupancy]] = defaultdict(list)
+    if unit_ids:
+        for o in s.scalars(select(Occupancy).where(Occupancy.unit_id.in_(unit_ids))).all():
+            occ_map[o.unit_id].append(o)
+    total = 0.0
+    for b in bills:
+        for sh in split_bill(b, occ_map):
+            if sh.unit_id == unit_id:
+                total += sh.amount
+    return round(total, 2)

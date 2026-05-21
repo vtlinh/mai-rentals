@@ -85,6 +85,19 @@ class BillUnit(Base):
     unit: Mapped[Unit] = relationship()
 
 
+class Payment(Base):
+    """A payment a unit made toward a specific (year, month, kind) cell on the dashboard."""
+    __tablename__ = "payments"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    unit_id: Mapped[int] = mapped_column(ForeignKey("units.id", ondelete="CASCADE"))
+    year: Mapped[int] = mapped_column(Integer)
+    month: Mapped[int] = mapped_column(Integer)
+    kind: Mapped[str] = mapped_column(String)
+    amount: Mapped[float] = mapped_column(Float)
+
+    unit: Mapped[Unit] = relationship()
+
+
 def init_db() -> None:
     Base.metadata.create_all(engine)
 

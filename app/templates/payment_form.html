@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}{{ "Edit" if payment else "Record" }} payment{% endblock %}
+{% block body %}
+<h1>{{ "Edit" if payment else "Record" }} payment</h1>
+<p class="muted">
+  {{ unit.name }} &middot; {{ kind }} &middot; {{ year }}-{{ "%02d"|format(month) }}<br>
+  Total owed: <strong>${{ "%.2f"|format(owed) }}</strong>
+</p>
+<form method="post">
+  <label>Amount paid ($)
+    <input type="number" step="0.01" min="0" name="amount" required
+           value="{{ '%.2f'|format(payment.amount) if payment else '%.2f'|format(owed) }}">
+  </label>
+  <p>
+    <button type="submit">Save</button>
+    <a href="{{ url_for('main.dashboard') }}">Cancel</a>
+  </p>
+</form>
+{% endblock %}
