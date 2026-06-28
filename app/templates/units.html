@@ -22,10 +22,6 @@
 </table>
 <p class="actions">
   <a class="btn-secondary btn-sm" href="{{ url_for('main.units_edit', uid=unit.id) }}">Edit unit &amp; occupancies</a>
-  <form class="inline" method="post" action="{{ url_for('main.units_delete', uid=unit.id) }}"
-        onsubmit="return confirm('Delete unit {{ unit.name }} and all its data?');">
-    <button class="btn-danger btn-sm" type="submit">delete</button>
-  </form>
 </p>
 {% else %}
 <p class="muted">No units yet.</p>

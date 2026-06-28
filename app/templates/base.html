@@ -7,9 +7,20 @@
 <style>
   *, *::before, *::after { box-sizing: border-box; }
   body { font-family: system-ui, sans-serif; max-width: 960px; margin: 2rem auto; padding: 0 1rem; color: #222; }
-  nav { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; }
+  nav {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem;
+    position: sticky; top: 0; z-index: 20;
+    background: #fff; padding: 0.6rem 0; border-bottom: 1px solid #ddd;
+  }
   nav a { margin-right: 0; }
   nav .spacer { margin-left: auto; }
+  /* Page-level save bar pinned to the bottom of the viewport while scrolling. */
+  .sticky-save {
+    position: sticky; bottom: 0; z-index: 10;
+    display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;
+    background: #fff; border-top: 1px solid #ddd; padding: 0.75rem 0; margin-top: 1.5rem;
+  }
+  .sticky-save .danger { margin-left: auto; }
   table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
   th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; }
   th { background: #f4f4f4; }
@@ -66,7 +77,6 @@
     <a href="{{ url_for('auth.logout') }}">Log out</a>
   {% endif %}
 </nav>
-<hr>
 {% with messages = get_flashed_messages() %}
   {% for m in messages %}<div class="flash">{{ m }}</div>{% endfor %}
 {% endwith %}

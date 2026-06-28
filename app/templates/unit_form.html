@@ -51,5 +51,13 @@
     <input type="date" name="end_date" required style="min-width:auto;"></label>
   <button class="btn" type="submit">Add</button>
 </form>
+
+<hr style="margin-top:2rem;">
+<h3>Delete unit</h3>
+<p class="muted">Removes this unit and all of its occupancies. This cannot be undone.</p>
+<form method="post" action="{{ url_for('main.units_delete', uid=unit.id) }}"
+      onsubmit="return confirm('Delete unit {{ unit.name }} and all its data? This cannot be undone.');">
+  <button class="btn-danger" type="submit">Delete unit</button>
+</form>
 {% endif %}
 {% endblock %}

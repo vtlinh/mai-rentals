@@ -49,13 +49,7 @@
     <td class="right">${{ "%.2f"|format(b.amount) }}</td>
     <td>{{ b.assignments | map(attribute='unit.name') | join(', ') }}</td>
     <td>
-      <span class="actions">
-        <a class="btn-secondary btn-sm" href="{{ url_for('main.bills_edit', bid=b.id) }}">edit</a>
-        <form class="inline" method="post" action="{{ url_for('main.bills_delete', bid=b.id) }}"
-              onsubmit="return confirm('Delete bill?');">
-          <button class="btn-danger btn-sm" type="submit">delete</button>
-        </form>
-      </span>
+      <a class="btn-secondary btn-sm" href="{{ url_for('main.bills_edit', bid=b.id) }}">edit</a>
     </td>
   </tr>
   {% else %}
