@@ -100,6 +100,8 @@ class RecurringBill(Base):
     recurrence_config: Mapped[str] = mapped_column(String, default="[]")
     start_date: Mapped[date] = mapped_column(Date)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # A credit generates negative-amount bills (reduces what units owe).
+    is_credit: Mapped[bool] = mapped_column(Boolean, default=False)
 
     assignments: Mapped[list["RecurringBillUnit"]] = relationship(
         back_populates="recurring_bill", cascade="all, delete-orphan"
@@ -160,16 +162,18 @@ class Payment(Base):
 
 def init_db() -> None:
     Base.metadata.create_all(engine)
-    # Additive migration: add recurring_bill_id to bills if it doesn't exist yet.
+    # Additive migrations: add columns to existing tables if missing.
     with engine.connect() as conn:
-        try:
-            conn.execute(text(
-                "ALTER TABLE bills ADD COLUMN recurring_bill_id INTEGER "
-                "REFERENCES recurring_bills(id) ON DELETE SET NULL"
-            ))
-            conn.commit()
-        except Exception:
-            pass  # Column already exists
+        for stmt in (
+            "ALTER TABLE bills ADD COLUMN recurring_bill_id INTEGER "
+            "REFERENCES recurring_bills(id) ON DELETE SET NULL",
+            "ALTER TABLE recurring_bills ADD COLUMN is_credit BOOLEAN DEFAULT 0",
+        ):
+            try:
+                conn.execute(text(stmt))
+                conn.commit()
+            except Exception:
+                conn.rollback()  # Column already exists
 
 
 @contextmanager
