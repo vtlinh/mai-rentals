@@ -468,7 +468,7 @@ def recurring_list():
                 "rb": rb,
                 "unit_names": sorted(rb_units.get(rb.id, [])),
                 "config_display": _config_display(rb.recurrence, cfg),
-                "generated_count": rb_counts[rb.id],
+                "generated_count": rb_counts.get(rb.id, 0),
             })
         return render_template(
             "recurring_bills.html",
