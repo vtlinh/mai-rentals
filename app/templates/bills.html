@@ -2,12 +2,19 @@
 {% block title %}Bills{% endblock %}
 {% block body %}
 <h1>Bills</h1>
-<p><a href="{{ url_for('main.bills_new') }}">+ Add bill</a></p>
+<p>
+  <a href="{{ url_for('main.bills_new') }}">+ Add bill</a>
+  &nbsp;·&nbsp;
+  <a href="{{ url_for('main.recurring_list') }}">Recurring bills</a>
+</p>
 <table>
   <tr><th>Kind</th><th>Period (end inclusive)</th><th>Due</th><th class="right">Amount</th><th>Units</th><th></th></tr>
   {% for b in bills %}
   <tr>
-    <td><a href="{{ url_for('main.bills_detail', bid=b.id) }}">{{ b.kind }}</a></td>
+    <td>
+      <a href="{{ url_for('main.bills_detail', bid=b.id) }}">{{ b.kind }}</a>
+      {% if b.recurring_bill_id %}<span class="muted" title="Generated from a recurring bill">↻</span>{% endif %}
+    </td>
     <td>{{ b.start_date }} &rarr; {{ b.end_date }}</td>
     <td>{{ bill_due_date(b.end_date) }}</td>
     <td class="right">${{ "%.2f"|format(b.amount) }}</td>

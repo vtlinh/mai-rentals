@@ -24,7 +24,9 @@
   <a href="{{ url_for('main.index') }}">Dashboard</a>
   <a href="{{ url_for('main.units_list') }}">Units</a>
   <a href="{{ url_for('main.bills_list') }}">Bills</a>
+  <a href="{{ url_for('main.recurring_list') }}">Recurring</a>
   {% if is_admin(current_email()) %}
+    <a href="{{ url_for('main.kinds_list') }}">Kinds</a>
     <a href="{{ url_for('main.users_list') }}">Users</a>
   {% endif %}
   {% if current_email() %}
