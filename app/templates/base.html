@@ -2,25 +2,43 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}Rental{% endblock %}</title>
 <style>
+  *, *::before, *::after { box-sizing: border-box; }
   body { font-family: system-ui, sans-serif; max-width: 960px; margin: 2rem auto; padding: 0 1rem; color: #222; }
-  nav a { margin-right: 1rem; }
+  nav { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; }
+  nav a { margin-right: 0; }
+  nav .spacer { margin-left: auto; }
   table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
   th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; }
   th { background: #f4f4f4; }
   .flash { background: #e7f5e7; border: 1px solid #b6dfb6; padding: 0.5rem; margin: 0.5rem 0; }
   form.inline { display: inline; }
   label { display: block; margin-top: 0.5rem; }
-  input, select, textarea { padding: 0.3rem; min-width: 200px; }
+  input, select, textarea { padding: 0.5rem; min-width: 200px; max-width: 100%; }
+  button { padding: 0.4rem 0.6rem; }
   .btn-danger { color: #a00; background: none; border: none; cursor: pointer; padding: 0; }
   .muted { color: #777; font-size: 0.9rem; }
   .right { text-align: right; }
+
+  @media (max-width: 640px) {
+    body { margin: 1rem auto; }
+    nav { gap: 0.4rem 0.9rem; }
+    nav .spacer { margin-left: 0; flex-basis: 100%; margin-top: 0.3rem; }
+    /* Inputs go full-width so forms never overflow the viewport. */
+    input, select, textarea { min-width: 0; width: 100%; }
+    /* Any table not already wrapped scrolls sideways instead of breaking layout. */
+    table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; white-space: nowrap; }
+    /* Bigger tap targets. */
+    button, .btn-danger { padding: 0.5rem 0.7rem; }
+    .btn-danger { padding: 0.2rem 0.3rem; }
+  }
 </style>
 </head>
 <body>
 <nav>
-  <strong>Rental</strong> |
+  <strong>Rental</strong>
   <a href="{{ url_for('main.index') }}">Dashboard</a>
   <a href="{{ url_for('main.units_list') }}">Units</a>
   <a href="{{ url_for('main.bills_list') }}">Bills</a>
@@ -29,10 +47,9 @@
     <a href="{{ url_for('main.users_list') }}">Users</a>
   {% endif %}
   {% if current_email() %}
-    <span style="float:right;">
-      <span class="muted">{{ current_email() }}</span>
-      <a href="{{ url_for('auth.logout') }}">Log out</a>
-    </span>
+    <span class="spacer"></span>
+    <span class="muted">{{ current_email() }}</span>
+    <a href="{{ url_for('auth.logout') }}">Log out</a>
   {% endif %}
 </nav>
 <hr>
