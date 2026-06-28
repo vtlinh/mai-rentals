@@ -36,7 +36,7 @@
 <p class="actions">
   <a class="btn" href="{{ url_for('main.bills_new') }}">+ Add bill</a>
   {% if is_admin(current_email()) %}
-  <a class="btn-secondary" href="{{ url_for('main.categories_list') }}">Edit categories</a>
+  <a class="btn-secondary" href="{{ url_for('main.categories_list') }}">Manage categories</a>
   {% endif %}
 </p>
 <table>
