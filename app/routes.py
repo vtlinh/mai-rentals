@@ -229,8 +229,9 @@ def occ_new(uid: int):
                 )
             )
             flash("Occupancy added.")
-            return redirect(url_for("main.units_list"))
-        return render_template("occ_form.html", unit=unit, occ=None)
+            return redirect(url_for("main.units_edit", uid=uid))
+        # The add form lives inline on the unit edit page.
+        return redirect(url_for("main.units_edit", uid=uid))
 
 
 @bp.route("/occupancies/<int:oid>/edit", methods=["GET", "POST"])
@@ -239,22 +240,27 @@ def occ_edit(oid: int):
         occ = s.get(Occupancy, oid)
         if occ is None:
             return redirect(url_for("main.units_list"))
+        uid = occ.unit_id
         if request.method == "POST":
             occ.tenant_count = int(request.form["tenant_count"])
             occ.start_date = _parse_date(request.form["start_date"])
             occ.end_date = _parse_date(request.form["end_date"])
             flash("Occupancy updated.")
-            return redirect(url_for("main.units_list"))
-        return render_template("occ_form.html", unit=occ.unit, occ=occ)
+            return redirect(url_for("main.units_edit", uid=uid))
+        # Editing happens inline on the unit edit page.
+        return redirect(url_for("main.units_edit", uid=uid))
 
 
 @bp.route("/occupancies/<int:oid>/delete", methods=["POST"])
 def occ_delete(oid: int):
     with get_session() as s:
         occ = s.get(Occupancy, oid)
+        uid = occ.unit_id if occ else None
         if occ:
             s.delete(occ)
             flash("Occupancy removed.")
+    if uid:
+        return redirect(url_for("main.units_edit", uid=uid))
     return redirect(url_for("main.units_list"))
 
 

@@ -2,9 +2,53 @@
 {% block title %}{{ "Edit" if unit else "New" }} unit{% endblock %}
 {% block body %}
 <h1>{{ "Edit" if unit else "New" }} unit</h1>
+
 <form method="post">
   <label>Name <input name="name" required value="{{ unit.name if unit else '' }}"></label>
   <label>Note <input name="note" value="{{ unit.note if unit else '' }}"></label>
-  <p><button type="submit">Save</button> <a href="{{ url_for('main.units_list') }}">Cancel</a></p>
+  <p><button type="submit">Save</button> <a href="{{ url_for('main.units_list') }}">{{ "Done" if unit else "Cancel" }}</a></p>
 </form>
+
+{% if unit %}
+<hr>
+<h2>Occupancies</h2>
+<p class="muted">Each occupancy is a tenant headcount over an inclusive date range. Bills are split across units by person-days (tenants &times; overlapping days).</p>
+
+{% for occ in unit.occupancies | sort(attribute='start_date') %}
+<div style="display:flex; gap:0.5rem; align-items:flex-end; flex-wrap:wrap; margin:0.5rem 0; padding:0.5rem; border:1px solid #eee; border-radius:4px;">
+  <form class="inline" method="post" action="{{ url_for('main.occ_edit', oid=occ.id) }}"
+        style="display:flex; gap:0.5rem; align-items:flex-end; flex-wrap:wrap;">
+    <label style="display:inline-block; margin:0;">Tenants<br>
+      <input type="number" min="1" name="tenant_count" required
+             value="{{ occ.tenant_count }}" style="min-width:auto; width:70px;"></label>
+    <label style="display:inline-block; margin:0;">Start<br>
+      <input type="date" name="start_date" required
+             value="{{ occ.start_date }}" style="min-width:auto;"></label>
+    <label style="display:inline-block; margin:0;">End (inclusive)<br>
+      <input type="date" name="end_date" required
+             value="{{ occ.end_date }}" style="min-width:auto;"></label>
+    <button type="submit">Save</button>
+  </form>
+  <form class="inline" method="post" action="{{ url_for('main.occ_delete', oid=occ.id) }}"
+        onsubmit="return confirm('Delete this occupancy?');">
+    <button class="btn-danger" type="submit">delete</button>
+  </form>
+</div>
+{% else %}
+<p class="muted">No occupancies yet.</p>
+{% endfor %}
+
+<h3>Add occupancy</h3>
+<form method="post" action="{{ url_for('main.occ_new', uid=unit.id) }}"
+      style="display:flex; gap:0.5rem; align-items:flex-end; flex-wrap:wrap;">
+  <label style="display:inline-block; margin:0;">Tenants<br>
+    <input type="number" min="1" name="tenant_count" required value="1"
+           style="min-width:auto; width:70px;"></label>
+  <label style="display:inline-block; margin:0;">Start<br>
+    <input type="date" name="start_date" required style="min-width:auto;"></label>
+  <label style="display:inline-block; margin:0;">End (inclusive)<br>
+    <input type="date" name="end_date" required style="min-width:auto;"></label>
+  <button type="submit">Add</button>
+</form>
+{% endif %}
 {% endblock %}
