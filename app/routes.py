@@ -421,12 +421,13 @@ def _apply_recurring_bills(s) -> int:
                 select(RecurringBillUnit).where(RecurringBillUnit.recurring_bill_id == rb.id)
             ).all()
         ]
+        amount = -rb.amount if rb.is_credit else rb.amount
         for start, end in recurring_instances(rb, today):
             if start in existing_starts:
                 continue
             bill = Bill(
                 kind=rb.kind,
-                amount=rb.amount,
+                amount=amount,
                 start_date=start,
                 end_date=end,
                 note=rb.note,
@@ -469,6 +470,7 @@ def _recurring_summary_rows(s) -> list[dict]:
         cfg = json.loads(rb.recurrence_config or "[]")
         rows.append({
             "rb": rb,
+            "is_credit": rb.is_credit,
             "unit_names": sorted(rb_units.get(rb.id, [])),
             "config_display": _config_display(rb.recurrence, cfg),
             "generated_count": rb_counts.get(rb.id, 0),
@@ -519,11 +521,13 @@ def recurring_new():
             s.flush()
             for uid in request.form.getlist("unit_ids"):
                 s.add(RecurringBillUnit(recurring_bill_id=rb.id, unit_id=int(uid)))
-            flash("Recurring bill added.")
+            flash(f"Recurring {'credit' if rb.is_credit else 'bill'} added.")
             return redirect(url_for("main.recurring_list"))
+        is_credit = request.args.get("credit") == "1"
         return render_template(
             "recurring_bill_form.html",
             rb=None,
+            is_credit=is_credit,
             units=units,
             kinds=kinds,
             selected_ids=set(),
@@ -549,6 +553,15 @@ def recurring_edit(rid: int):
             rb.recurrence_config = _parse_recurrence_config(request.form)
             rb.start_date = _parse_date(request.form["start_date"])
             rb.active = "active" in request.form
+            new_is_credit = request.form.get("is_credit") == "1"
+            # If the credit flag flipped, regenerate signs on already-created bills.
+            if new_is_credit != rb.is_credit:
+                rb.is_credit = new_is_credit
+                signed = -abs(rb.amount) if rb.is_credit else abs(rb.amount)
+                for existing in s.scalars(
+                    select(Bill).where(Bill.recurring_bill_id == rid)
+                ).all():
+                    existing.amount = signed
             for rbu in list(s.scalars(
                 select(RecurringBillUnit).where(RecurringBillUnit.recurring_bill_id == rid)
             ).all()):
@@ -556,7 +569,7 @@ def recurring_edit(rid: int):
             s.flush()
             for uid in request.form.getlist("unit_ids"):
                 s.add(RecurringBillUnit(recurring_bill_id=rid, unit_id=int(uid)))
-            flash("Recurring bill updated.")
+            flash(f"Recurring {'credit' if rb.is_credit else 'bill'} updated.")
             return redirect(url_for("main.recurring_list"))
         selected_ids = {
             rbu.unit_id
@@ -568,6 +581,7 @@ def recurring_edit(rid: int):
         return render_template(
             "recurring_bill_form.html",
             rb=rb,
+            is_credit=rb.is_credit,
             units=units,
             kinds=kinds,
             selected_ids=selected_ids,
@@ -622,6 +636,7 @@ def _build_recurring_bill(form) -> RecurringBill:
         recurrence_config=_parse_recurrence_config(form),
         start_date=_parse_date(form["start_date"]),
         active="active" in form,
+        is_credit=form.get("is_credit") == "1",
     )
 
 

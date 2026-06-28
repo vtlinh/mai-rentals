@@ -3,13 +3,15 @@
 {% block body %}
 <h1>Bills</h1>
 
-<h2>Recurring bills</h2>
+<h2>Recurring bills &amp; credits</h2>
 <p class="actions">
   <a class="btn" href="{{ url_for('main.recurring_new') }}">+ Add recurring bill</a>
+  <a class="btn" href="{{ url_for('main.recurring_new', credit=1) }}">+ Add recurring credit</a>
   <a class="btn-secondary" href="{{ url_for('main.recurring_list') }}">Manage recurring</a>
 </p>
 <table>
   <tr>
+    <th>Type</th>
     <th>Category</th>
     <th class="right">Amount</th>
     <th>Schedule</th>
@@ -20,15 +22,16 @@
   {% for row in recurring_rows %}
   {% set rb = row.rb %}
   <tr>
+    <td>{% if row.is_credit %}<span style="color:#2a7;">credit</span>{% else %}bill{% endif %}</td>
     <td>{{ rb.kind }}</td>
-    <td class="right">${{ "%.2f"|format(rb.amount) }}</td>
+    <td class="right">{% if row.is_credit %}&minus;{% endif %}${{ "%.2f"|format(rb.amount) }}</td>
     <td>{{ row.config_display }}</td>
     <td>{{ row.unit_names | join(', ') or '—' }}</td>
     <td>{% if rb.active %}<span style="color:#2a7;">active</span>{% else %}<span class="muted">paused</span>{% endif %}</td>
-    <td>{{ row.generated_count }} bill{{ 's' if row.generated_count != 1 else '' }}</td>
+    <td>{{ row.generated_count }}</td>
   </tr>
   {% else %}
-  <tr><td colspan="6" class="muted">No recurring bills yet.</td></tr>
+  <tr><td colspan="7" class="muted">No recurring bills or credits yet.</td></tr>
   {% endfor %}
 </table>
 

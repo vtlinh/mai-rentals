@@ -1,10 +1,14 @@
 {% extends "base.html" %}
 {% block title %}Recurring Bills{% endblock %}
 {% block body %}
-<h1>Recurring Bills</h1>
-<p><a class="btn" href="{{ url_for('main.recurring_new') }}">+ Add recurring bill</a></p>
+<h1>Recurring bills &amp; credits</h1>
+<p class="actions">
+  <a class="btn" href="{{ url_for('main.recurring_new') }}">+ Add recurring bill</a>
+  <a class="btn" href="{{ url_for('main.recurring_new', credit=1) }}">+ Add recurring credit</a>
+</p>
 <table>
   <tr>
+    <th>Type</th>
     <th>Category</th>
     <th>Amount</th>
     <th>Schedule</th>
@@ -17,8 +21,9 @@
   {% for row in rows %}
   {% set rb = row.rb %}
   <tr>
+    <td>{% if row.is_credit %}<span style="color:#2a7;">credit</span>{% else %}bill{% endif %}</td>
     <td>{{ rb.kind }}</td>
-    <td class="right">${{ "%.2f"|format(rb.amount) }}</td>
+    <td class="right">{% if row.is_credit %}&minus;{% endif %}${{ "%.2f"|format(rb.amount) }}</td>
     <td>{{ row.config_display }}</td>
     <td>{{ row.unit_names | join(', ') or '—' }}</td>
     <td>{{ rb.start_date }}</td>
@@ -29,7 +34,7 @@
         <span class="muted">paused</span>
       {% endif %}
     </td>
-    <td>{{ row.generated_count }} bill{{ 's' if row.generated_count != 1 else '' }}</td>
+    <td>{{ row.generated_count }}</td>
     <td>
       <span class="actions">
         <a class="btn-secondary btn-sm" href="{{ url_for('main.recurring_edit', rid=rb.id) }}">edit</a>
@@ -40,7 +45,7 @@
     </td>
   </tr>
   {% else %}
-  <tr><td colspan="8" class="muted">No recurring bills yet.</td></tr>
+  <tr><td colspan="9" class="muted">No recurring bills or credits yet.</td></tr>
   {% endfor %}
 </table>
 {% endblock %}

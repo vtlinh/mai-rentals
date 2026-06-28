@@ -1,8 +1,13 @@
 {% extends "base.html" %}
-{% block title %}{{ "Edit" if rb else "New" }} Recurring Bill{% endblock %}
+{% set label = "Credit" if is_credit else "Bill" %}
+{% block title %}{{ "Edit" if rb else "New" }} Recurring {{ label }}{% endblock %}
 {% block body %}
-<h1>{{ "Edit" if rb else "New" }} Recurring Bill</h1>
+<h1>{{ "Edit" if rb else "New" }} Recurring {{ label }}</h1>
+{% if is_credit %}
+<p class="muted">A recurring credit generates negative-amount bills that reduce what assigned units owe (split across them by person-days, same as bills).</p>
+{% endif %}
 <form id="recurringform" method="post">
+  <input type="hidden" name="is_credit" value="{{ '1' if is_credit else '0' }}">
 
   <label>Category
     <select name="kind">
@@ -108,11 +113,11 @@
 
 <div class="sticky-save">
   <button class="btn" type="submit" form="recurringform">Save</button>
-  <a class="btn-secondary" href="{{ url_for('main.recurring_list') }}">Cancel</a>
+  <a class="btn-secondary" href="{{ url_for('main.bills_list') }}">Cancel</a>
   {% if rb %}
   <form class="inline danger" method="post" action="{{ url_for('main.recurring_delete', rid=rb.id) }}"
-        onsubmit="return confirm('Delete this recurring bill and all its generated bills? This cannot be undone.');">
-    <button class="btn-danger" type="submit">Delete recurring bill</button>
+        onsubmit="return confirm('Delete this recurring {{ label|lower }} and all its generated entries? This cannot be undone.');">
+    <button class="btn-danger" type="submit">Delete recurring {{ label|lower }}</button>
   </form>
   {% endif %}
 </div>
