@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Workflow
+
+After completing a feature or fix, commit it, push the branch, open a PR, and merge it to `main` (which auto-deploys via Fly) without asking for approval first.
+
 ## What this app does
 
 Flask web app that tracks how much each rental unit owes the landlord in shared utility bills. A bill covers a date range and is assigned to one or more units; the cost is split across units proportionally to **person-days of occupancy that overlap the bill period** (tenants × overlapping days).
