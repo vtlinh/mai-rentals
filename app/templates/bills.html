@@ -2,9 +2,39 @@
 {% block title %}Bills{% endblock %}
 {% block body %}
 <h1>Bills</h1>
+
+<h2>Recurring bills</h2>
+<p class="actions">
+  <a class="btn" href="{{ url_for('main.recurring_new') }}">+ Add recurring bill</a>
+  <a class="btn-secondary" href="{{ url_for('main.recurring_list') }}">Manage recurring</a>
+</p>
+<table>
+  <tr>
+    <th>Category</th>
+    <th class="right">Amount</th>
+    <th>Schedule</th>
+    <th>Units</th>
+    <th>Status</th>
+    <th>Generated</th>
+  </tr>
+  {% for row in recurring_rows %}
+  {% set rb = row.rb %}
+  <tr>
+    <td>{{ rb.kind }}</td>
+    <td class="right">${{ "%.2f"|format(rb.amount) }}</td>
+    <td>{{ row.config_display }}</td>
+    <td>{{ row.unit_names | join(', ') or '—' }}</td>
+    <td>{% if rb.active %}<span style="color:#2a7;">active</span>{% else %}<span class="muted">paused</span>{% endif %}</td>
+    <td>{{ row.generated_count }} bill{{ 's' if row.generated_count != 1 else '' }}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="6" class="muted">No recurring bills yet.</td></tr>
+  {% endfor %}
+</table>
+
+<h2>One-off bills</h2>
 <p class="actions">
   <a class="btn" href="{{ url_for('main.bills_new') }}">+ Add bill</a>
-  <a class="btn-secondary" href="{{ url_for('main.recurring_list') }}">Recurring bills</a>
   {% if is_admin(current_email()) %}
   <a class="btn-secondary" href="{{ url_for('main.categories_list') }}">Edit categories</a>
   {% endif %}
@@ -13,10 +43,7 @@
   <tr><th>Category</th><th>Period (end inclusive)</th><th>Due</th><th class="right">Amount</th><th>Units</th><th></th></tr>
   {% for b in bills %}
   <tr>
-    <td>
-      <a href="{{ url_for('main.bills_detail', bid=b.id) }}">{{ b.kind }}</a>
-      {% if b.recurring_bill_id %}<span class="muted" title="Generated from a recurring bill">↻</span>{% endif %}
-    </td>
+    <td><a href="{{ url_for('main.bills_detail', bid=b.id) }}">{{ b.kind }}</a></td>
     <td>{{ b.start_date }} &rarr; {{ b.end_date }}</td>
     <td>{{ bill_due_date(b.end_date) }}</td>
     <td class="right">${{ "%.2f"|format(b.amount) }}</td>
@@ -32,7 +59,7 @@
     </td>
   </tr>
   {% else %}
-  <tr><td colspan="6" class="muted">No bills yet.</td></tr>
+  <tr><td colspan="6" class="muted">No one-off bills yet.</td></tr>
   {% endfor %}
 </table>
 {% endblock %}

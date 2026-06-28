@@ -270,12 +270,15 @@ def occ_delete(oid: int):
 @bp.route("/bills")
 def bills_list():
     with get_session() as s:
+        # One-off bills only — recurring-generated bills live in their own section.
         bills = s.scalars(
             select(Bill)
+            .where(Bill.recurring_bill_id.is_(None))
             .options(selectinload(Bill.assignments).selectinload(BillUnit.unit))
             .order_by(Bill.end_date.desc())
         ).all()
-        return render_template("bills.html", bills=bills)
+        recurring_rows = _recurring_summary_rows(s)
+        return render_template("bills.html", bills=bills, recurring_rows=recurring_rows)
 
 
 @bp.route("/bills/new", methods=["GET", "POST"])
@@ -439,6 +442,40 @@ def _apply_recurring_bills(s) -> int:
     return created
 
 
+def _recurring_summary_rows(s) -> list[dict]:
+    """Build display rows for all recurring-bill templates (category, schedule,
+    units, status, and how many bills each has generated). Shared by the
+    Recurring page and the Bills page's recurring section."""
+    from sqlalchemy import func
+
+    rbs = s.scalars(
+        select(RecurringBill).order_by(RecurringBill.kind, RecurringBill.id)
+    ).all()
+    rb_units: dict[int, list[str]] = defaultdict(list)
+    for rbu in s.scalars(
+        select(RecurringBillUnit).options(selectinload(RecurringBillUnit.unit))
+    ).all():
+        rb_units[rbu.recurring_bill_id].append(rbu.unit.name)
+
+    count_rows = s.execute(
+        select(Bill.recurring_bill_id, func.count(Bill.id))
+        .where(Bill.recurring_bill_id.is_not(None))
+        .group_by(Bill.recurring_bill_id)
+    ).all()
+    rb_counts: dict[int, int] = {row[0]: row[1] for row in count_rows}
+
+    rows = []
+    for rb in rbs:
+        cfg = json.loads(rb.recurrence_config or "[]")
+        rows.append({
+            "rb": rb,
+            "unit_names": sorted(rb_units.get(rb.id, [])),
+            "config_display": _config_display(rb.recurrence, cfg),
+            "generated_count": rb_counts.get(rb.id, 0),
+        })
+    return rows
+
+
 @bp.route("/recurring")
 def recurring_list():
     with get_session() as s:
@@ -446,34 +483,7 @@ def recurring_list():
         if created:
             flash(f"Generated {created} new bill{'s' if created != 1 else ''} from recurring templates.")
 
-        rbs = s.scalars(
-            select(RecurringBill).order_by(RecurringBill.kind, RecurringBill.id)
-        ).all()
-        # Attach unit names
-        rb_units: dict[int, list[str]] = defaultdict(list)
-        for rbu in s.scalars(
-            select(RecurringBillUnit).options(selectinload(RecurringBillUnit.unit))
-        ).all():
-            rb_units[rbu.recurring_bill_id].append(rbu.unit.name)
-
-        # Count generated bills per template (single query, keyed by recurring_bill_id)
-        from sqlalchemy import func
-        count_rows = s.execute(
-            select(Bill.recurring_bill_id, func.count(Bill.id).label("cnt"))
-            .where(Bill.recurring_bill_id.is_not(None))
-            .group_by(Bill.recurring_bill_id)
-        ).all()
-        rb_counts: dict[int, int] = {row[0]: row[1] for row in count_rows}
-
-        rows = []
-        for rb in rbs:
-            cfg = json.loads(rb.recurrence_config or "[]")
-            rows.append({
-                "rb": rb,
-                "unit_names": sorted(rb_units.get(rb.id, [])),
-                "config_display": _config_display(rb.recurrence, cfg),
-                "generated_count": rb_counts.get(rb.id, 0),
-            })
+        rows = _recurring_summary_rows(s)
         return render_template(
             "recurring_bills.html",
             rows=rows,
