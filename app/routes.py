@@ -173,6 +173,13 @@ def units_list():
         return render_template("units.html", units=units)
 
 
+@bp.route("/units/manage")
+def units_manage():
+    with get_session() as s:
+        units = s.scalars(select(Unit).order_by(Unit.name)).all()
+        return render_template("manage_units.html", units=units)
+
+
 @bp.route("/units/new", methods=["GET", "POST"])
 def units_new():
     if request.method == "POST":
@@ -181,7 +188,7 @@ def units_new():
         with get_session() as s:
             s.add(Unit(name=name, note=note))
         flash(f"Unit '{name}' added.")
-        return redirect(url_for("main.units_list"))
+        return redirect(url_for("main.units_manage"))
     return render_template("unit_form.html", unit=None)
 
 
@@ -196,7 +203,7 @@ def units_edit(uid: int):
             unit.name = request.form["name"].strip()
             unit.note = request.form.get("note", "").strip()
             flash("Unit updated.")
-            return redirect(url_for("main.units_list"))
+            return redirect(url_for("main.units_manage"))
         return render_template("unit_form.html", unit=unit)
 
 
