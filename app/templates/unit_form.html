@@ -1,18 +1,21 @@
 {% extends "base.html" %}
-{% block title %}{{ "Edit" if unit else "New" }} unit{% endblock %}
+{% block title %}{% if unit %}Manage occupancy — {{ unit.name }}{% else %}New unit{% endif %}{% endblock %}
 {% block body %}
-<h1>{{ "Edit" if unit else "New" }} unit</h1>
 
-<form method="post">
-  <label>Name <input name="name" required value="{{ unit.name if unit else '' }}"></label>
-  <label>Note <input name="note" value="{{ unit.note if unit else '' }}"></label>
-  <p class="actions"><button class="btn" type="submit">Save</button>
-     <a class="btn-secondary" href="{{ url_for('main.units_list') }}">{{ "Done" if unit else "Cancel" }}</a></p>
+{% if not unit %}
+<h1>New unit</h1>
+<form id="unitform" method="post">
+  <label>Name <input name="name" required value=""></label>
+  <label>Note <input name="note" value=""></label>
 </form>
+<div class="sticky-save">
+  <button class="btn" type="submit" form="unitform">Save</button>
+  <a class="btn-secondary" href="{{ url_for('main.units_list') }}">Cancel</a>
+</div>
 
-{% if unit %}
-<hr>
-<h2>Occupancies</h2>
+{% else %}
+<h1>Manage occupancy &mdash; {{ unit.name }}</h1>
+<p><a class="btn-secondary btn-sm" href="{{ url_for('main.units_list') }}">&larr; Back to units</a></p>
 <p class="muted">Each occupancy is a tenant headcount over an inclusive date range. Bills are split across units by person-days (tenants &times; overlapping days).</p>
 
 {% for occ in unit.occupancies | sort(attribute='start_date') %}
