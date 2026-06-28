@@ -11,9 +11,9 @@
     <input type="number" step="0.01" min="0" name="amount" required
            value="{{ '%.2f'|format(payment.amount) if payment else '%.2f'|format(owed) }}">
   </label>
-  <p>
-    <button type="submit">Save</button>
-    <a href="{{ url_for('main.dashboard') }}">Cancel</a>
+  <p class="actions">
+    <button class="btn" type="submit">Save</button>
+    <a class="btn-secondary" href="{{ url_for('main.dashboard') }}">Cancel</a>
   </p>
 </form>
 {% endblock %}

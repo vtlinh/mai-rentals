@@ -275,8 +275,7 @@ def bills_list():
             .options(selectinload(Bill.assignments).selectinload(BillUnit.unit))
             .order_by(Bill.end_date.desc())
         ).all()
-        kinds = s.scalars(select(BillingKind).order_by(BillingKind.name)).all()
-        return render_template("bills.html", bills=bills, kinds=kinds)
+        return render_template("bills.html", bills=bills)
 
 
 @bp.route("/bills/new", methods=["GET", "POST"])
@@ -358,35 +357,43 @@ def bills_detail(bid: int):
         return render_template("bill_detail.html", bill=bill, shares=shares)
 
 
-# ---------------- Billing Kinds (admin only; managed from the Bills page) ----------------
+# ---------------- Categories (admin only) ----------------
 
 
-@bp.route("/kinds/new", methods=["POST"])
-def kinds_new():
+@bp.route("/categories")
+def categories_list():
+    _require_admin()
+    with get_session() as s:
+        categories = s.scalars(select(BillingKind).order_by(BillingKind.name)).all()
+        return render_template("categories.html", categories=categories)
+
+
+@bp.route("/categories/new", methods=["POST"])
+def categories_new():
     _require_admin()
     name = request.form["name"].strip().lower()
     if not name:
-        flash("Billing kind name is required.")
-        return redirect(url_for("main.bills_list"))
+        flash("Category name is required.")
+        return redirect(url_for("main.categories_list"))
     with get_session() as s:
         existing = s.scalar(select(BillingKind).where(BillingKind.name == name))
         if existing:
             flash(f"'{name}' already exists.")
         else:
             s.add(BillingKind(name=name))
-            flash(f"Added billing kind '{name}'.")
-    return redirect(url_for("main.bills_list"))
+            flash(f"Added category '{name}'.")
+    return redirect(url_for("main.categories_list"))
 
 
-@bp.route("/kinds/<int:kid>/delete", methods=["POST"])
-def kinds_delete(kid: int):
+@bp.route("/categories/<int:cid>/delete", methods=["POST"])
+def categories_delete(cid: int):
     _require_admin()
     with get_session() as s:
-        kind = s.get(BillingKind, kid)
-        if kind:
-            s.delete(kind)
-            flash(f"Removed billing kind '{kind.name}'.")
-    return redirect(url_for("main.bills_list"))
+        category = s.get(BillingKind, cid)
+        if category:
+            s.delete(category)
+            flash(f"Removed category '{category.name}'.")
+    return redirect(url_for("main.categories_list"))
 
 
 # ---------------- Recurring Bills ----------------

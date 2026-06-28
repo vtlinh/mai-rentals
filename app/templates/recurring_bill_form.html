@@ -4,7 +4,7 @@
 <h1>{{ "Edit" if rb else "New" }} Recurring Bill</h1>
 <form method="post">
 
-  <label>Kind
+  <label>Category
     <select name="kind">
       {% for k in kinds %}
         <option value="{{ k }}" {% if rb and rb.kind == k %}selected{% endif %}>{{ k }}</option>
@@ -104,7 +104,8 @@
     Active (generate bills automatically)
   </label>
 
-  <p><button type="submit">Save</button> <a href="{{ url_for('main.recurring_list') }}">Cancel</a></p>
+  <p class="actions"><button class="btn" type="submit">Save</button>
+     <a class="btn-secondary" href="{{ url_for('main.recurring_list') }}">Cancel</a></p>
 </form>
 
 <script>

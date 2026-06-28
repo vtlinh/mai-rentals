@@ -6,7 +6,7 @@
   Period {{ bill.start_date }} to {{ bill.end_date }} (inclusive) &middot; Due {{ bill_due_date(bill.end_date) }}
   {% if bill.note %}<br>{{ bill.note }}{% endif %}
 </p>
-<p>[<a href="{{ url_for('main.bills_edit', bid=bill.id) }}">edit</a>]</p>
+<p><a class="btn-secondary btn-sm" href="{{ url_for('main.bills_edit', bid=bill.id) }}">edit</a></p>
 
 <table>
   <tr><th>Unit</th><th class="right">Person-days</th><th class="right">Owed</th></tr>

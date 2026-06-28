@@ -2,18 +2,10 @@
 {% block title %}Units{% endblock %}
 {% block body %}
 <h1>Units</h1>
-<p><a href="{{ url_for('main.units_new') }}">+ Add unit</a></p>
+<p><a class="btn" href="{{ url_for('main.units_new') }}">+ Add unit</a></p>
 
 {% for unit in units %}
-<h2>{{ unit.name }}
-  <small>
-    [<a href="{{ url_for('main.units_edit', uid=unit.id) }}">edit</a>]
-    <form class="inline" method="post" action="{{ url_for('main.units_delete', uid=unit.id) }}"
-          onsubmit="return confirm('Delete unit {{ unit.name }} and all its data?');">
-      <button class="btn-danger" type="submit">delete</button>
-    </form>
-  </small>
-</h2>
+<h2 style="margin-bottom:0.3rem;">{{ unit.name }}</h2>
 {% if unit.note %}<p class="muted">{{ unit.note }}</p>{% endif %}
 
 <table>
@@ -28,7 +20,13 @@
   <tr><td colspan="3" class="muted">No occupancies.</td></tr>
   {% endfor %}
 </table>
-<p><a href="{{ url_for('main.units_edit', uid=unit.id) }}">Edit unit &amp; occupancies</a></p>
+<p class="actions">
+  <a class="btn-secondary btn-sm" href="{{ url_for('main.units_edit', uid=unit.id) }}">Edit unit &amp; occupancies</a>
+  <form class="inline" method="post" action="{{ url_for('main.units_delete', uid=unit.id) }}"
+        onsubmit="return confirm('Delete unit {{ unit.name }} and all its data?');">
+    <button class="btn-danger btn-sm" type="submit">delete</button>
+  </form>
+</p>
 {% else %}
 <p class="muted">No units yet.</p>
 {% endfor %}

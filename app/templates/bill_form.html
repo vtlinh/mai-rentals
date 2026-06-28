@@ -3,17 +3,17 @@
 {% block body %}
 <h1>{{ "Edit" if bill else "New" }} bill</h1>
 <form method="post">
-  <label>Kind
+  <label>Category
     <select name="kind">
       {% for k in kinds %}
         <option value="{{ k }}" {% if bill and bill.kind == k %}selected{% endif %}>{{ k }}</option>
       {% else %}
-        <option disabled>No billing kinds defined</option>
+        <option disabled>No categories defined</option>
       {% endfor %}
     </select>
   </label>
   {% if is_admin(current_email()) %}
-  <p class="muted">Manage kinds on the <a href="{{ url_for('main.bills_list') }}">Bills</a> page.</p>
+  <p class="muted"><a href="{{ url_for('main.categories_list') }}">Edit categories</a></p>
   {% endif %}
   <label>Amount ($)
     <input type="number" step="0.01" min="0" name="amount" required
@@ -40,6 +40,7 @@
     {% endfor %}
   </fieldset>
 
-  <p><button type="submit">Save</button> <a href="{{ url_for('main.bills_list') }}">Cancel</a></p>
+  <p class="actions"><button class="btn" type="submit">Save</button>
+     <a class="btn-secondary" href="{{ url_for('main.bills_list') }}">Cancel</a></p>
 </form>
 {% endblock %}
