@@ -2,19 +2,13 @@
 {% block title %}Units{% endblock %}
 {% block body %}
 <h1>Units</h1>
-
-<h2>Manage units</h2>
-<p><a class="btn" href="{{ url_for('main.units_new') }}">+ Add unit</a></p>
+<p class="actions">
+  <a class="btn-secondary" href="{{ url_for('main.units_manage') }}">Manage units</a>
+</p>
 
 {% for unit in units %}
 <div style="border:1px solid #eee; border-radius:6px; padding:0.75rem; margin:1rem 0;">
-  <form method="post" action="{{ url_for('main.units_edit', uid=unit.id) }}"
-        style="display:flex; gap:0.5rem; align-items:flex-end; flex-wrap:wrap;">
-    <label style="display:inline-block; margin:0;">Name<br>
-      <input name="name" required value="{{ unit.name }}"></label>
-    <input type="hidden" name="note" value="{{ unit.note }}">
-    <button class="btn btn-sm" type="submit">Save</button>
-  </form>
+  <h2 style="margin:0 0 0.5rem 0;">{{ unit.name }}</h2>
 
   <table>
     <tr><th>Tenants</th><th>Start</th><th>End (inclusive)</th></tr>
@@ -33,6 +27,6 @@
   </p>
 </div>
 {% else %}
-<p class="muted">No units yet.</p>
+<p class="muted">No units yet. <a href="{{ url_for('main.units_manage') }}">Manage units</a> to add one.</p>
 {% endfor %}
 {% endblock %}
