@@ -5,11 +5,16 @@
 <form method="post">
   <label>Kind
     <select name="kind">
-      {% for k in ["water", "electric", "gas", "water+electric", "water+gas", "electric+gas", "water+electric+gas"] %}
+      {% for k in kinds %}
         <option value="{{ k }}" {% if bill and bill.kind == k %}selected{% endif %}>{{ k }}</option>
+      {% else %}
+        <option disabled>No billing kinds defined</option>
       {% endfor %}
     </select>
   </label>
+  {% if is_admin(current_email()) %}
+  <p class="muted">Manage kinds: <a href="{{ url_for('main.kinds_list') }}">Billing Kinds</a></p>
+  {% endif %}
   <label>Amount ($)
     <input type="number" step="0.01" min="0" name="amount" required
            value="{{ bill.amount if bill else '' }}"></label>

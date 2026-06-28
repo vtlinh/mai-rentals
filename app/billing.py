@@ -1,3 +1,5 @@
+import calendar
+import json
 from dataclasses import dataclass
 from datetime import date, timedelta
 
@@ -76,3 +78,66 @@ def next_month(today: date) -> tuple[int, int]:
     if today.month == 12:
         return today.year + 1, 1
     return today.year, today.month + 1
+
+
+def recurring_instances(rb, today: date) -> list[tuple[date, date]]:
+    """Return (start, end) date pairs for all bill periods that should exist up to today.
+
+    Deduplication key per recurrence type:
+      daily   → (rb.id, that day)           — 1-day period
+      weekly  → (rb.id, Monday of week)     — Mon–Sun period
+      monthly → (rb.id, 1st of month)       — full-month period
+      yearly  → (rb.id, 1st of that month)  — full-month period
+    """
+    start = rb.start_date
+    recurrence = rb.recurrence
+    config: list[int] = json.loads(rb.recurrence_config or "[]")
+    instances: list[tuple[date, date]] = []
+
+    if recurrence == "daily":
+        d = start
+        while d <= today:
+            instances.append((d, d))
+            d += timedelta(days=1)
+
+    elif recurrence == "weekly":
+        # config = weekday indices [0=Mon..6=Sun]; default Monday
+        active_days = sorted(config) if config else [0]
+        # Walk week by week (Monday-anchored); emit one bill per week when any
+        # selected weekday falls on or after start_date and on or before today.
+        monday = start - timedelta(days=start.weekday())
+        while monday <= today:
+            sunday = monday + timedelta(days=6)
+            for wd in active_days:
+                trigger = monday + timedelta(days=wd)
+                if trigger >= start and trigger <= today:
+                    instances.append((monday, sunday))
+                    break
+            monday += timedelta(days=7)
+
+    elif recurrence == "monthly":
+        # config = day-of-month list [1-31]; default 1st
+        active_days = sorted(config) if config else [1]
+        y, m = start.year, start.month
+        while (y, m) <= (today.year, today.month):
+            _, last = calendar.monthrange(y, m)
+            for day in active_days:
+                trigger = date(y, m, min(day, last))
+                if trigger >= start and trigger <= today:
+                    instances.append((date(y, m, 1), date(y, m, last)))
+                    break
+            m += 1
+            if m > 12:
+                y, m = y + 1, 1
+
+    elif recurrence == "yearly":
+        # config = month numbers [1-12]; default January
+        active_months = sorted(config) if config else [1]
+        for y in range(start.year, today.year + 1):
+            for month in active_months:
+                _, last = calendar.monthrange(y, month)
+                bill_start = date(y, month, 1)
+                if bill_start >= start and bill_start <= today:
+                    instances.append((bill_start, date(y, month, last)))
+
+    return instances

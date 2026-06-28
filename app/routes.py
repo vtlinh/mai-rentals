@@ -1,3 +1,4 @@
+import json
 from collections import defaultdict
 from datetime import date, datetime
 
@@ -6,19 +7,28 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.auth import current_email, is_admin, is_authorized
-from app.billing import bill_due_date, split_bill
+from app.billing import bill_due_date, recurring_instances, split_bill
 from app.db import (
     AuthorizedUser,
     Bill,
+    BillingKind,
     BillUnit,
     Occupancy,
     Payment,
+    RecurringBill,
+    RecurringBillUnit,
     Unit,
     admin_email,
     get_session,
 )
 
 bp = Blueprint("main", __name__)
+
+WEEKDAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+MONTH_NAMES = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+]
 
 
 @bp.before_request
@@ -36,6 +46,10 @@ def _require_admin():
 
 def _parse_date(s: str) -> date:
     return datetime.strptime(s, "%Y-%m-%d").date()
+
+
+def _kind_names(s) -> list[str]:
+    return [k.name for k in s.scalars(select(BillingKind).order_by(BillingKind.name)).all()]
 
 
 @bp.route("/")
@@ -262,6 +276,7 @@ def bills_list():
 def bills_new():
     with get_session() as s:
         units = s.scalars(select(Unit).order_by(Unit.name)).all()
+        kinds = _kind_names(s)
         if request.method == "POST":
             bill = Bill(
                 kind=request.form["kind"],
@@ -276,7 +291,7 @@ def bills_new():
                 s.add(BillUnit(bill_id=bill.id, unit_id=int(uid)))
             flash("Bill added.")
             return redirect(url_for("main.bills_list"))
-        return render_template("bill_form.html", bill=None, units=units, selected_ids=set())
+        return render_template("bill_form.html", bill=None, units=units, selected_ids=set(), kinds=kinds)
 
 
 @bp.route("/bills/<int:bid>/edit", methods=["GET", "POST"])
@@ -286,6 +301,7 @@ def bills_edit(bid: int):
         if bill is None:
             return redirect(url_for("main.bills_list"))
         units = s.scalars(select(Unit).order_by(Unit.name)).all()
+        kinds = _kind_names(s)
         if request.method == "POST":
             bill.kind = request.form["kind"]
             bill.amount = float(request.form["amount"])
@@ -300,7 +316,7 @@ def bills_edit(bid: int):
             flash("Bill updated.")
             return redirect(url_for("main.bills_list"))
         selected = {a.unit_id for a in bill.assignments}
-        return render_template("bill_form.html", bill=bill, units=units, selected_ids=selected)
+        return render_template("bill_form.html", bill=bill, units=units, selected_ids=selected, kinds=kinds)
 
 
 @bp.route("/bills/<int:bid>/delete", methods=["POST"])
@@ -333,6 +349,266 @@ def bills_detail(bid: int):
                 occ_map[o.unit_id].append(o)
         shares = split_bill(bill, occ_map)
         return render_template("bill_detail.html", bill=bill, shares=shares)
+
+
+# ---------------- Billing Kinds (admin only) ----------------
+
+
+@bp.route("/kinds")
+def kinds_list():
+    _require_admin()
+    with get_session() as s:
+        kinds = s.scalars(select(BillingKind).order_by(BillingKind.name)).all()
+        return render_template("billing_kinds.html", kinds=kinds)
+
+
+@bp.route("/kinds/new", methods=["GET", "POST"])
+def kinds_new():
+    _require_admin()
+    if request.method == "POST":
+        name = request.form["name"].strip().lower()
+        if not name:
+            flash("Name is required.")
+            return render_template("billing_kind_form.html")
+        with get_session() as s:
+            existing = s.scalar(select(BillingKind).where(BillingKind.name == name))
+            if existing:
+                flash(f"'{name}' already exists.")
+            else:
+                s.add(BillingKind(name=name))
+                flash(f"Added billing kind '{name}'.")
+        return redirect(url_for("main.kinds_list"))
+    return render_template("billing_kind_form.html")
+
+
+@bp.route("/kinds/<int:kid>/delete", methods=["POST"])
+def kinds_delete(kid: int):
+    _require_admin()
+    with get_session() as s:
+        kind = s.get(BillingKind, kid)
+        if kind:
+            s.delete(kind)
+            flash(f"Removed billing kind '{kind.name}'.")
+    return redirect(url_for("main.kinds_list"))
+
+
+# ---------------- Recurring Bills ----------------
+
+
+def _apply_recurring_bills(s) -> int:
+    """Generate missing Bill instances for all active recurring bills up to today.
+    Returns count of new bills created."""
+    today = date.today()
+    active_rbs = s.scalars(
+        select(RecurringBill).where(RecurringBill.active == True)  # noqa: E712
+    ).all()
+
+    created = 0
+    for rb in active_rbs:
+        existing_starts: set[date] = set(
+            s.scalars(select(Bill.start_date).where(Bill.recurring_bill_id == rb.id)).all()
+        )
+        unit_ids = [
+            rbu.unit_id
+            for rbu in s.scalars(
+                select(RecurringBillUnit).where(RecurringBillUnit.recurring_bill_id == rb.id)
+            ).all()
+        ]
+        for start, end in recurring_instances(rb, today):
+            if start in existing_starts:
+                continue
+            bill = Bill(
+                kind=rb.kind,
+                amount=rb.amount,
+                start_date=start,
+                end_date=end,
+                note=rb.note,
+                recurring_bill_id=rb.id,
+            )
+            s.add(bill)
+            s.flush()
+            for uid in unit_ids:
+                s.add(BillUnit(bill_id=bill.id, unit_id=uid))
+            existing_starts.add(start)
+            created += 1
+
+    return created
+
+
+@bp.route("/recurring")
+def recurring_list():
+    with get_session() as s:
+        created = _apply_recurring_bills(s)
+        if created:
+            flash(f"Generated {created} new bill{'s' if created != 1 else ''} from recurring templates.")
+
+        rbs = s.scalars(
+            select(RecurringBill).order_by(RecurringBill.kind, RecurringBill.id)
+        ).all()
+        # Attach unit names
+        rb_units: dict[int, list[str]] = defaultdict(list)
+        for rbu in s.scalars(
+            select(RecurringBillUnit).options(selectinload(RecurringBillUnit.unit))
+        ).all():
+            rb_units[rbu.recurring_bill_id].append(rbu.unit.name)
+
+        # Count generated bills per template (single query, keyed by recurring_bill_id)
+        from sqlalchemy import func
+        count_rows = s.execute(
+            select(Bill.recurring_bill_id, func.count(Bill.id).label("cnt"))
+            .where(Bill.recurring_bill_id.is_not(None))
+            .group_by(Bill.recurring_bill_id)
+        ).all()
+        rb_counts: dict[int, int] = {row[0]: row[1] for row in count_rows}
+
+        rows = []
+        for rb in rbs:
+            cfg = json.loads(rb.recurrence_config or "[]")
+            rows.append({
+                "rb": rb,
+                "unit_names": sorted(rb_units.get(rb.id, [])),
+                "config_display": _config_display(rb.recurrence, cfg),
+                "generated_count": rb_counts[rb.id],
+            })
+        return render_template(
+            "recurring_bills.html",
+            rows=rows,
+        )
+
+
+def _config_display(recurrence: str, config: list[int]) -> str:
+    if recurrence == "daily":
+        return "every day"
+    if recurrence == "weekly":
+        days = [WEEKDAY_NAMES[i] for i in config if 0 <= i <= 6]
+        return "every " + (", ".join(days) if days else "week")
+    if recurrence == "monthly":
+        def ordinal(n: int) -> str:
+            s = {1: "st", 2: "nd", 3: "rd"}
+            return f"{n}{s.get(n if n < 20 else n % 10, 'th')}"
+        days = [ordinal(d) for d in config if 1 <= d <= 31]
+        return "monthly on the " + (", ".join(days) if days else "1st")
+    if recurrence == "yearly":
+        months = [MONTH_NAMES[m - 1] for m in config if 1 <= m <= 12]
+        return "yearly in " + (", ".join(months) if months else "January")
+    return recurrence
+
+
+@bp.route("/recurring/new", methods=["GET", "POST"])
+def recurring_new():
+    with get_session() as s:
+        units = s.scalars(select(Unit).order_by(Unit.name)).all()
+        kinds = _kind_names(s)
+        if request.method == "POST":
+            rb = _build_recurring_bill(request.form)
+            s.add(rb)
+            s.flush()
+            for uid in request.form.getlist("unit_ids"):
+                s.add(RecurringBillUnit(recurring_bill_id=rb.id, unit_id=int(uid)))
+            flash("Recurring bill added.")
+            return redirect(url_for("main.recurring_list"))
+        return render_template(
+            "recurring_bill_form.html",
+            rb=None,
+            units=units,
+            kinds=kinds,
+            selected_ids=set(),
+            weekday_names=WEEKDAY_NAMES,
+            month_names=MONTH_NAMES,
+            selected_config=[],
+        )
+
+
+@bp.route("/recurring/<int:rid>/edit", methods=["GET", "POST"])
+def recurring_edit(rid: int):
+    with get_session() as s:
+        rb = s.get(RecurringBill, rid)
+        if rb is None:
+            return redirect(url_for("main.recurring_list"))
+        units = s.scalars(select(Unit).order_by(Unit.name)).all()
+        kinds = _kind_names(s)
+        if request.method == "POST":
+            rb.kind = request.form["kind"]
+            rb.amount = float(request.form["amount"])
+            rb.note = request.form.get("note", "").strip()
+            rb.recurrence = request.form["recurrence"]
+            rb.recurrence_config = _parse_recurrence_config(request.form)
+            rb.start_date = _parse_date(request.form["start_date"])
+            rb.active = "active" in request.form
+            for rbu in list(s.scalars(
+                select(RecurringBillUnit).where(RecurringBillUnit.recurring_bill_id == rid)
+            ).all()):
+                s.delete(rbu)
+            s.flush()
+            for uid in request.form.getlist("unit_ids"):
+                s.add(RecurringBillUnit(recurring_bill_id=rid, unit_id=int(uid)))
+            flash("Recurring bill updated.")
+            return redirect(url_for("main.recurring_list"))
+        selected_ids = {
+            rbu.unit_id
+            for rbu in s.scalars(
+                select(RecurringBillUnit).where(RecurringBillUnit.recurring_bill_id == rid)
+            ).all()
+        }
+        selected_config = json.loads(rb.recurrence_config or "[]")
+        return render_template(
+            "recurring_bill_form.html",
+            rb=rb,
+            units=units,
+            kinds=kinds,
+            selected_ids=selected_ids,
+            weekday_names=WEEKDAY_NAMES,
+            month_names=MONTH_NAMES,
+            selected_config=selected_config,
+        )
+
+
+@bp.route("/recurring/<int:rid>/delete", methods=["POST"])
+def recurring_delete(rid: int):
+    with get_session() as s:
+        rb = s.get(RecurringBill, rid)
+        if rb:
+            s.delete(rb)
+            flash("Recurring bill removed.")
+    return redirect(url_for("main.recurring_list"))
+
+
+@bp.route("/recurring/<int:rid>/toggle", methods=["POST"])
+def recurring_toggle(rid: int):
+    with get_session() as s:
+        rb = s.get(RecurringBill, rid)
+        if rb:
+            rb.active = not rb.active
+            flash(f"Recurring bill {'activated' if rb.active else 'paused'}.")
+    return redirect(url_for("main.recurring_list"))
+
+
+def _parse_recurrence_config(form) -> str:
+    recurrence = form.get("recurrence", "daily")
+    if recurrence == "daily":
+        return "[]"
+    if recurrence == "weekly":
+        values = [int(v) for v in form.getlist("config_weekly") if v.isdigit()]
+        return json.dumps(sorted(values))
+    if recurrence == "monthly":
+        values = [int(v) for v in form.getlist("config_monthly") if v.isdigit()]
+        return json.dumps(sorted(values))
+    if recurrence == "yearly":
+        values = [int(v) for v in form.getlist("config_yearly") if v.isdigit()]
+        return json.dumps(sorted(values))
+    return "[]"
+
+
+def _build_recurring_bill(form) -> RecurringBill:
+    return RecurringBill(
+        kind=form["kind"],
+        amount=float(form["amount"]),
+        note=form.get("note", "").strip(),
+        recurrence=form["recurrence"],
+        recurrence_config=_parse_recurrence_config(form),
+        start_date=_parse_date(form["start_date"]),
+        active="active" in form,
+    )
 
 
 # ---------------- Users (admin only) ----------------

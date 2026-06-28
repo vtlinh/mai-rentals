@@ -10,7 +10,7 @@ if _env_file.exists():
 
 from app.auth import auth_bp, current_email, init_oauth, is_admin  # noqa: E402
 from app.billing import bill_due_date  # noqa: E402
-from app.db import admin_email, init_db, seed_authorized_users  # noqa: E402
+from app.db import admin_email, init_db, seed_authorized_users, seed_billing_kinds  # noqa: E402
 from app.routes import bp  # noqa: E402
 
 
@@ -19,6 +19,7 @@ def create_app() -> Flask:
     app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret-change-me")
     init_db()
     seed_authorized_users()
+    seed_billing_kinds()
     init_oauth(app)
     app.register_blueprint(bp)
     app.register_blueprint(auth_bp)
