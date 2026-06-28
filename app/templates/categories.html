@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Categories{% endblock %}
+{% block body %}
+<h1>Bill categories</h1>
+<p class="muted">Categories available when creating bills. Removing a category does not change bills already using it.</p>
+
+<table>
+  <tr><th>Name</th><th></th></tr>
+  {% for c in categories %}
+  <tr>
+    <td>{{ c.name }}</td>
+    <td>
+      <form class="inline" method="post" action="{{ url_for('main.categories_delete', cid=c.id) }}"
+            onsubmit="return confirm('Remove category \'{{ c.name }}\'?');">
+        <button class="btn-danger btn-sm" type="submit">delete</button>
+      </form>
+    </td>
+  </tr>
+  {% else %}
+  <tr><td colspan="2" class="muted">No categories yet.</td></tr>
+  {% endfor %}
+</table>
+
+<h2>Add category</h2>
+<form method="post" action="{{ url_for('main.categories_new') }}"
+      style="display:flex; gap:0.5rem; align-items:flex-end; flex-wrap:wrap;">
+  <label style="margin:0;">New category<br>
+    <input name="name" required placeholder="e.g. water"></label>
+  <button class="btn" type="submit">Add category</button>
+</form>
+
+<p style="margin-top:1.5rem;">
+  <a class="btn-secondary" href="{{ url_for('main.bills_list') }}">Back to bills</a>
+</p>
+{% endblock %}

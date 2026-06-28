@@ -6,6 +6,7 @@
   <label>Email
     <input type="email" name="email" required
            value="{{ user.email if user else '' }}"></label>
-  <p><button type="submit">Save</button> <a href="{{ url_for('main.users_list') }}">Cancel</a></p>
+  <p class="actions"><button class="btn" type="submit">Save</button>
+     <a class="btn-secondary" href="{{ url_for('main.users_list') }}">Cancel</a></p>
 </form>
 {% endblock %}

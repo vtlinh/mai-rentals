@@ -50,11 +50,16 @@ DEFAULT_BILLING_KINDS = ["water", "electric", "gas", "combined"]
 
 
 def seed_billing_kinds() -> None:
+    """Seed default categories only on a fresh database.
+
+    Once any category exists we leave the set alone, so categories the user
+    deletes (including defaults like "combined") stay deleted across restarts.
+    """
     with Session(engine) as s:
-        existing = {k.name for k in s.scalars(select(BillingKind)).all()}
+        if s.scalar(select(BillingKind.id)) is not None:
+            return
         for name in DEFAULT_BILLING_KINDS:
-            if name not in existing:
-                s.add(BillingKind(name=name))
+            s.add(BillingKind(name=name))
         s.commit()
 
 

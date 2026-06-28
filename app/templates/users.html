@@ -2,7 +2,7 @@
 {% block title %}Users{% endblock %}
 {% block body %}
 <h1>Authorized users</h1>
-<p><a href="{{ url_for('main.users_new') }}">+ Add user</a></p>
+<p><a class="btn" href="{{ url_for('main.users_new') }}">+ Add user</a></p>
 
 <table>
   <tr><th>Email</th><th>Role</th><th></th></tr>
@@ -11,13 +11,15 @@
     <td>{{ u.email }}</td>
     <td>{% if u.email == admin_email %}admin{% else %}member{% endif %}</td>
     <td>
-      <a href="{{ url_for('main.users_edit', uid=u.id) }}">edit</a>
-      {% if u.email != admin_email %}
-      <form class="inline" method="post" action="{{ url_for('main.users_delete', uid=u.id) }}"
-            onsubmit="return confirm('Remove {{ u.email }}?');">
-        <button class="btn-danger" type="submit">remove</button>
-      </form>
-      {% endif %}
+      <span class="actions">
+        <a class="btn-secondary btn-sm" href="{{ url_for('main.users_edit', uid=u.id) }}">edit</a>
+        {% if u.email != admin_email %}
+        <form class="inline" method="post" action="{{ url_for('main.users_delete', uid=u.id) }}"
+              onsubmit="return confirm('Remove {{ u.email }}?');">
+          <button class="btn-danger btn-sm" type="submit">remove</button>
+        </form>
+        {% endif %}
+      </span>
     </td>
   </tr>
   {% endfor %}

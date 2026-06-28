@@ -38,9 +38,9 @@
         <td class="right">
           {% if cell.amount %}
             ${{ "%.2f"|format(cell.amount) }}
-            <a href="{{ url_for('main.payment_edit', uid=row.unit_id, year=m.year, month=m.month, kind=cell.kind) }}"
-               style="margin-left: 0.4rem; font-size: 0.85em;">
-              [{{ "edit" if cell.has_payment else "pay" }}]
+            <a class="btn-secondary btn-sm" style="margin-left: 0.4rem;"
+               href="{{ url_for('main.payment_edit', uid=row.unit_id, year=m.year, month=m.month, kind=cell.kind) }}">
+              {{ "edit" if cell.has_payment else "pay" }}
             </a>
             <br>
             {% if cell.remaining <= 0 %}

@@ -6,7 +6,8 @@
 <form method="post">
   <label>Name <input name="name" required value="{{ unit.name if unit else '' }}"></label>
   <label>Note <input name="note" value="{{ unit.note if unit else '' }}"></label>
-  <p><button type="submit">Save</button> <a href="{{ url_for('main.units_list') }}">{{ "Done" if unit else "Cancel" }}</a></p>
+  <p class="actions"><button class="btn" type="submit">Save</button>
+     <a class="btn-secondary" href="{{ url_for('main.units_list') }}">{{ "Done" if unit else "Cancel" }}</a></p>
 </form>
 
 {% if unit %}
@@ -27,11 +28,11 @@
     <label style="display:inline-block; margin:0;">End (inclusive)<br>
       <input type="date" name="end_date" required
              value="{{ occ.end_date }}" style="min-width:auto;"></label>
-    <button type="submit">Save</button>
+    <button class="btn btn-sm" type="submit">Save</button>
   </form>
   <form class="inline" method="post" action="{{ url_for('main.occ_delete', oid=occ.id) }}"
         onsubmit="return confirm('Delete this occupancy?');">
-    <button class="btn-danger" type="submit">delete</button>
+    <button class="btn-danger btn-sm" type="submit">delete</button>
   </form>
 </div>
 {% else %}
@@ -48,7 +49,7 @@
     <input type="date" name="start_date" required style="min-width:auto;"></label>
   <label style="display:inline-block; margin:0;">End (inclusive)<br>
     <input type="date" name="end_date" required style="min-width:auto;"></label>
-  <button type="submit">Add</button>
+  <button class="btn" type="submit">Add</button>
 </form>
 {% endif %}
 {% endblock %}

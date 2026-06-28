@@ -2,13 +2,15 @@
 {% block title %}Bills{% endblock %}
 {% block body %}
 <h1>Bills</h1>
-<p>
-  <a href="{{ url_for('main.bills_new') }}">+ Add bill</a>
-  &nbsp;·&nbsp;
-  <a href="{{ url_for('main.recurring_list') }}">Recurring bills</a>
+<p class="actions">
+  <a class="btn" href="{{ url_for('main.bills_new') }}">+ Add bill</a>
+  <a class="btn-secondary" href="{{ url_for('main.recurring_list') }}">Recurring bills</a>
+  {% if is_admin(current_email()) %}
+  <a class="btn-secondary" href="{{ url_for('main.categories_list') }}">Edit categories</a>
+  {% endif %}
 </p>
 <table>
-  <tr><th>Kind</th><th>Period (end inclusive)</th><th>Due</th><th class="right">Amount</th><th>Units</th><th></th></tr>
+  <tr><th>Category</th><th>Period (end inclusive)</th><th>Due</th><th class="right">Amount</th><th>Units</th><th></th></tr>
   {% for b in bills %}
   <tr>
     <td>
@@ -20,43 +22,17 @@
     <td class="right">${{ "%.2f"|format(b.amount) }}</td>
     <td>{{ b.assignments | map(attribute='unit.name') | join(', ') }}</td>
     <td>
-      <a href="{{ url_for('main.bills_edit', bid=b.id) }}">edit</a>
-      <form class="inline" method="post" action="{{ url_for('main.bills_delete', bid=b.id) }}"
-            onsubmit="return confirm('Delete bill?');">
-        <button class="btn-danger" type="submit">delete</button>
-      </form>
+      <span class="actions">
+        <a class="btn-secondary btn-sm" href="{{ url_for('main.bills_edit', bid=b.id) }}">edit</a>
+        <form class="inline" method="post" action="{{ url_for('main.bills_delete', bid=b.id) }}"
+              onsubmit="return confirm('Delete bill?');">
+          <button class="btn-danger btn-sm" type="submit">delete</button>
+        </form>
+      </span>
     </td>
   </tr>
   {% else %}
   <tr><td colspan="6" class="muted">No bills yet.</td></tr>
   {% endfor %}
 </table>
-
-{% if is_admin(current_email()) %}
-<hr>
-<h2>Billing kinds</h2>
-<p class="muted">Kinds available when creating bills. Removing a kind does not affect bills already using it.</p>
-<table>
-  <tr><th>Name</th><th></th></tr>
-  {% for k in kinds %}
-  <tr>
-    <td>{{ k.name }}</td>
-    <td>
-      <form class="inline" method="post" action="{{ url_for('main.kinds_delete', kid=k.id) }}"
-            onsubmit="return confirm('Remove billing kind \'{{ k.name }}\'?');">
-        <button class="btn-danger" type="submit">delete</button>
-      </form>
-    </td>
-  </tr>
-  {% else %}
-  <tr><td colspan="2" class="muted">No billing kinds defined.</td></tr>
-  {% endfor %}
-</table>
-<form method="post" action="{{ url_for('main.kinds_new') }}"
-      style="display:flex; gap:0.5rem; align-items:flex-end; flex-wrap:wrap;">
-  <label style="display:inline-block; margin:0;">New kind<br>
-    <input name="name" required placeholder="e.g. water" style="min-width:auto;"></label>
-  <button type="submit">Add kind</button>
-</form>
-{% endif %}
 {% endblock %}

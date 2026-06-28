@@ -9,6 +9,6 @@
   </p>
 {% else %}
   <p>You must sign in with an authorized Google account to view this site.</p>
-  <p><a href="{{ url_for('auth.login') }}">Sign in with Google</a></p>
+  <p><a class="btn" href="{{ url_for('auth.login') }}">Sign in with Google</a></p>
 {% endif %}
 {% endblock %}

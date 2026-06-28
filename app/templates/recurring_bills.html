@@ -2,10 +2,10 @@
 {% block title %}Recurring Bills{% endblock %}
 {% block body %}
 <h1>Recurring Bills</h1>
-<p><a href="{{ url_for('main.recurring_new') }}">+ Add recurring bill</a></p>
+<p><a class="btn" href="{{ url_for('main.recurring_new') }}">+ Add recurring bill</a></p>
 <table>
   <tr>
-    <th>Kind</th>
+    <th>Category</th>
     <th>Amount</th>
     <th>Schedule</th>
     <th>Units</th>
@@ -31,16 +31,16 @@
     </td>
     <td>{{ row.generated_count }} bill{{ 's' if row.generated_count != 1 else '' }}</td>
     <td>
-      <a href="{{ url_for('main.recurring_edit', rid=rb.id) }}">edit</a>
-      <form class="inline" method="post" action="{{ url_for('main.recurring_toggle', rid=rb.id) }}">
-        <button type="submit" style="background:none;border:none;cursor:pointer;padding:0;color:#555;">
-          {{ 'pause' if rb.active else 'resume' }}
-        </button>
-      </form>
-      <form class="inline" method="post" action="{{ url_for('main.recurring_delete', rid=rb.id) }}"
-            onsubmit="return confirm('Delete this recurring bill and all its generated bills?');">
-        <button class="btn-danger" type="submit">delete</button>
-      </form>
+      <span class="actions">
+        <a class="btn-secondary btn-sm" href="{{ url_for('main.recurring_edit', rid=rb.id) }}">edit</a>
+        <form class="inline" method="post" action="{{ url_for('main.recurring_toggle', rid=rb.id) }}">
+          <button class="btn-secondary btn-sm" type="submit">{{ 'pause' if rb.active else 'resume' }}</button>
+        </form>
+        <form class="inline" method="post" action="{{ url_for('main.recurring_delete', rid=rb.id) }}"
+              onsubmit="return confirm('Delete this recurring bill and all its generated bills?');">
+          <button class="btn-danger btn-sm" type="submit">delete</button>
+        </form>
+      </span>
     </td>
   </tr>
   {% else %}
