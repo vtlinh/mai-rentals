@@ -36,10 +36,6 @@
         <form class="inline" method="post" action="{{ url_for('main.recurring_toggle', rid=rb.id) }}">
           <button class="btn-secondary btn-sm" type="submit">{{ 'pause' if rb.active else 'resume' }}</button>
         </form>
-        <form class="inline" method="post" action="{{ url_for('main.recurring_delete', rid=rb.id) }}"
-              onsubmit="return confirm('Delete this recurring bill and all its generated bills?');">
-          <button class="btn-danger btn-sm" type="submit">delete</button>
-        </form>
       </span>
     </td>
   </tr>

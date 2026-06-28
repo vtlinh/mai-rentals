@@ -2,7 +2,7 @@
 {% block title %}{{ "Edit" if bill else "New" }} bill{% endblock %}
 {% block body %}
 <h1>{{ "Edit" if bill else "New" }} bill</h1>
-<form method="post">
+<form id="billform" method="post">
   <label>Category
     <select name="kind">
       {% for k in kinds %}
@@ -40,7 +40,16 @@
     {% endfor %}
   </fieldset>
 
-  <p class="actions"><button class="btn" type="submit">Save</button>
-     <a class="btn-secondary" href="{{ url_for('main.bills_list') }}">Cancel</a></p>
 </form>
+
+<div class="sticky-save">
+  <button class="btn" type="submit" form="billform">Save</button>
+  <a class="btn-secondary" href="{{ url_for('main.bills_list') }}">Cancel</a>
+  {% if bill %}
+  <form class="inline danger" method="post" action="{{ url_for('main.bills_delete', bid=bill.id) }}"
+        onsubmit="return confirm('Delete this bill? This cannot be undone.');">
+    <button class="btn-danger" type="submit">Delete bill</button>
+  </form>
+  {% endif %}
+</div>
 {% endblock %}
