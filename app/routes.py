@@ -275,7 +275,8 @@ def bills_list():
             .options(selectinload(Bill.assignments).selectinload(BillUnit.unit))
             .order_by(Bill.end_date.desc())
         ).all()
-        return render_template("bills.html", bills=bills)
+        kinds = s.scalars(select(BillingKind).order_by(BillingKind.name)).all()
+        return render_template("bills.html", bills=bills, kinds=kinds)
 
 
 @bp.route("/bills/new", methods=["GET", "POST"])
@@ -357,34 +358,24 @@ def bills_detail(bid: int):
         return render_template("bill_detail.html", bill=bill, shares=shares)
 
 
-# ---------------- Billing Kinds (admin only) ----------------
+# ---------------- Billing Kinds (admin only; managed from the Bills page) ----------------
 
 
-@bp.route("/kinds")
-def kinds_list():
-    _require_admin()
-    with get_session() as s:
-        kinds = s.scalars(select(BillingKind).order_by(BillingKind.name)).all()
-        return render_template("billing_kinds.html", kinds=kinds)
-
-
-@bp.route("/kinds/new", methods=["GET", "POST"])
+@bp.route("/kinds/new", methods=["POST"])
 def kinds_new():
     _require_admin()
-    if request.method == "POST":
-        name = request.form["name"].strip().lower()
-        if not name:
-            flash("Name is required.")
-            return render_template("billing_kind_form.html")
-        with get_session() as s:
-            existing = s.scalar(select(BillingKind).where(BillingKind.name == name))
-            if existing:
-                flash(f"'{name}' already exists.")
-            else:
-                s.add(BillingKind(name=name))
-                flash(f"Added billing kind '{name}'.")
-        return redirect(url_for("main.kinds_list"))
-    return render_template("billing_kind_form.html")
+    name = request.form["name"].strip().lower()
+    if not name:
+        flash("Billing kind name is required.")
+        return redirect(url_for("main.bills_list"))
+    with get_session() as s:
+        existing = s.scalar(select(BillingKind).where(BillingKind.name == name))
+        if existing:
+            flash(f"'{name}' already exists.")
+        else:
+            s.add(BillingKind(name=name))
+            flash(f"Added billing kind '{name}'.")
+    return redirect(url_for("main.bills_list"))
 
 
 @bp.route("/kinds/<int:kid>/delete", methods=["POST"])
@@ -395,7 +386,7 @@ def kinds_delete(kid: int):
         if kind:
             s.delete(kind)
             flash(f"Removed billing kind '{kind.name}'.")
-    return redirect(url_for("main.kinds_list"))
+    return redirect(url_for("main.bills_list"))
 
 
 # ---------------- Recurring Bills ----------------
