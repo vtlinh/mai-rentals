@@ -13,7 +13,7 @@
     </select>
   </label>
   {% if is_admin(current_email()) %}
-  <p class="muted">Manage kinds: <a href="{{ url_for('main.kinds_list') }}">Billing Kinds</a></p>
+  <p class="muted">Manage kinds on the <a href="{{ url_for('main.bills_list') }}">Bills</a> page.</p>
   {% endif %}
   <label>Amount ($)
     <input type="number" step="0.01" min="0" name="amount" required

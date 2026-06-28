@@ -31,4 +31,32 @@
   <tr><td colspan="6" class="muted">No bills yet.</td></tr>
   {% endfor %}
 </table>
+
+{% if is_admin(current_email()) %}
+<hr>
+<h2>Billing kinds</h2>
+<p class="muted">Kinds available when creating bills. Removing a kind does not affect bills already using it.</p>
+<table>
+  <tr><th>Name</th><th></th></tr>
+  {% for k in kinds %}
+  <tr>
+    <td>{{ k.name }}</td>
+    <td>
+      <form class="inline" method="post" action="{{ url_for('main.kinds_delete', kid=k.id) }}"
+            onsubmit="return confirm('Remove billing kind \'{{ k.name }}\'?');">
+        <button class="btn-danger" type="submit">delete</button>
+      </form>
+    </td>
+  </tr>
+  {% else %}
+  <tr><td colspan="2" class="muted">No billing kinds defined.</td></tr>
+  {% endfor %}
+</table>
+<form method="post" action="{{ url_for('main.kinds_new') }}"
+      style="display:flex; gap:0.5rem; align-items:flex-end; flex-wrap:wrap;">
+  <label style="display:inline-block; margin:0;">New kind<br>
+    <input name="name" required placeholder="e.g. water" style="min-width:auto;"></label>
+  <button type="submit">Add kind</button>
+</form>
+{% endif %}
 {% endblock %}
