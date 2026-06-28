@@ -12,8 +12,7 @@
         style="display:flex; gap:0.5rem; align-items:flex-end; flex-wrap:wrap;">
     <label style="display:inline-block; margin:0;">Name<br>
       <input name="name" required value="{{ unit.name }}"></label>
-    <label style="display:inline-block; margin:0; flex:1 1 200px;">Note<br>
-      <input name="note" value="{{ unit.note }}" style="width:100%;"></label>
+    <input type="hidden" name="note" value="{{ unit.note }}">
     <button class="btn btn-sm" type="submit">Save</button>
   </form>
 
