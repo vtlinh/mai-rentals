@@ -13,6 +13,9 @@ import { OAUTH_CLIENT_ID, SHEET_ID } from "./config.js";
 import { ForbiddenError, ensureTabs } from "./sheets.js";
 import { clear, flash, h } from "./util.js";
 
+import mountBillForm from "./pages/bill_form.js";
+import mountBills from "./pages/bills.js";
+import mountCategories from "./pages/categories.js";
 import mountDashboard from "./pages/dashboard.js";
 import mountManageOccupancy from "./pages/manage_occupancy.js";
 import mountManageUnits from "./pages/manage_units.js";
@@ -34,6 +37,14 @@ const ROUTES = {
     }
     return mountUnits(container);
   },
+  "bills": (container, params) => {
+    if (params[0] === "new") return mountBillForm(container, ["new"]);
+    if (params.length >= 2 && params[1] === "edit") {
+      return mountBillForm(container, params);
+    }
+    return mountBills(container);
+  },
+  "categories": mountCategories,
 };
 
 async function boot() {
