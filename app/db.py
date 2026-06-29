@@ -99,6 +99,8 @@ class RecurringBill(Base):
     #   yearly  → month numbers [1-12]
     recurrence_config: Mapped[str] = mapped_column(String, default="[]")
     start_date: Mapped[date] = mapped_column(Date)
+    # Optional cap — no bills generated for periods starting after this date.
+    end_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True, default=None)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     # A credit generates negative-amount bills (reduces what units owe).
     is_credit: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -168,6 +170,7 @@ def init_db() -> None:
             "ALTER TABLE bills ADD COLUMN recurring_bill_id INTEGER "
             "REFERENCES recurring_bills(id) ON DELETE SET NULL",
             "ALTER TABLE recurring_bills ADD COLUMN is_credit BOOLEAN DEFAULT 0",
+            "ALTER TABLE recurring_bills ADD COLUMN end_date DATE",
         ):
             try:
                 conn.execute(text(stmt))

@@ -94,6 +94,11 @@ def recurring_instances(rb, today: date) -> list[tuple[date, date]]:
     config: list[int] = json.loads(rb.recurrence_config or "[]")
     instances: list[tuple[date, date]] = []
 
+    # Optional cap: never generate periods that begin after the template's end_date.
+    end_cap = getattr(rb, "end_date", None)
+    if end_cap is not None and end_cap < today:
+        today = end_cap
+
     if recurrence == "daily":
         d = start
         while d <= today:

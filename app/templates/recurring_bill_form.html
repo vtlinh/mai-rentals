@@ -30,7 +30,11 @@
     <input type="date" name="start_date" required
            value="{{ rb.start_date if rb else '' }}">
   </label>
-  <p class="muted">Bills will be generated from this date forward up to today each time you visit the Recurring Bills page.</p>
+  <label>Ends on <span class="muted">(optional)</span>
+    <input type="date" name="end_date"
+           value="{{ rb.end_date if rb and rb.end_date else '' }}">
+  </label>
+  <p class="muted">Entries are generated from the start date forward up to today (and never past the end date, if set) each time the Bills page is visited.</p>
 
   <fieldset style="margin-top:1rem;">
     <legend>Recurrence</legend>
