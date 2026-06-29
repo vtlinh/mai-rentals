@@ -22,12 +22,12 @@
   {% for row in recurring_rows %}
   {% set rb = row.rb %}
   <tr>
-    <td>{% if row.is_credit %}<span style="color:#2a7;">credit</span>{% else %}bill{% endif %}</td>
+    <td>{% if row.is_credit %}<span style="color:var(--accent-green);">credit</span>{% else %}bill{% endif %}</td>
     <td>{{ rb.kind }}</td>
     <td class="right">{% if row.is_credit %}&minus;{% endif %}${{ "%.2f"|format(rb.amount) }}</td>
     <td>{{ row.config_display }}</td>
     <td>{{ row.unit_names | join(', ') or '—' }}</td>
-    <td>{% if rb.active %}<span style="color:#2a7;">active</span>{% else %}<span class="muted">paused</span>{% endif %}</td>
+    <td>{% if rb.active %}<span style="color:var(--accent-green);">active</span>{% else %}<span class="muted">paused</span>{% endif %}</td>
     <td>{{ row.generated_count }}</td>
   </tr>
   {% else %}

@@ -14,7 +14,7 @@
     {% endfor %}
   </table>
 {% else %}
-  <p style="color: #2a7a2a;">No outstanding balance for any units.</p>
+  <p style="color: var(--accent-green);">No outstanding balance for any units.</p>
 {% endif %}
 
 <h1>Amounts owed by month</h1>
@@ -48,9 +48,9 @@
             </a>
             <br>
             {% if cell.remaining <= 0 %}
-              <span style="color: #2a7a2a; font-size: 0.85em;">(paid)</span>
+              <span style="color: var(--accent-green); font-size: 0.85em;">(paid)</span>
             {% else %}
-              <span style="color: #d97a00; font-size: 0.85em;">
+              <span style="color: var(--accent-orange); font-size: 0.85em;">
                 (remaining: ${{ "%.2f"|format(cell.remaining) }})
               </span>
             {% endif %}

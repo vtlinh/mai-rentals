@@ -21,7 +21,7 @@
   {% for row in rows %}
   {% set rb = row.rb %}
   <tr>
-    <td>{% if row.is_credit %}<span style="color:#2a7;">credit</span>{% else %}bill{% endif %}</td>
+    <td>{% if row.is_credit %}<span style="color:var(--accent-green);">credit</span>{% else %}bill{% endif %}</td>
     <td>{{ rb.kind }}</td>
     <td class="right">{% if row.is_credit %}&minus;{% endif %}${{ "%.2f"|format(rb.amount) }}</td>
     <td>{{ row.config_display }}</td>
@@ -29,7 +29,7 @@
     <td>{{ rb.start_date }}</td>
     <td>
       {% if rb.active %}
-        <span style="color:#2a7;">active</span>
+        <span style="color:var(--accent-green);">active</span>
       {% else %}
         <span class="muted">paused</span>
       {% endif %}

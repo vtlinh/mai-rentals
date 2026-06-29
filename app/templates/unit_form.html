@@ -19,7 +19,7 @@
 <p class="muted">Each occupancy is a tenant headcount over an inclusive date range. Bills are split across units by person-days (tenants &times; overlapping days).</p>
 
 {% for occ in unit.occupancies | sort(attribute='start_date') %}
-<div style="display:flex; gap:0.5rem; align-items:flex-end; flex-wrap:wrap; margin:0.5rem 0; padding:0.5rem; border:1px solid #eee; border-radius:4px;">
+<div style="display:flex; gap:0.5rem; align-items:flex-end; flex-wrap:wrap; margin:0.5rem 0; padding:0.5rem; border:1px solid var(--row-border); border-radius:4px;">
   <form class="inline" method="post" action="{{ url_for('main.occ_edit', oid=occ.id) }}"
         style="display:flex; gap:0.5rem; align-items:flex-end; flex-wrap:wrap;">
     <label style="display:inline-block; margin:0;">Tenants<br>
