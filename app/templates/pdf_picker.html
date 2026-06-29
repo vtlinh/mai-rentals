@@ -6,7 +6,7 @@
 
 <form id="pdfform" method="post" action="{{ url_for('main.pdf_generate') }}">
   {% for unit in units %}
-  <fieldset style="margin:1rem 0; padding:0.5rem 1rem; border:1px solid #ddd; border-radius:6px;">
+  <fieldset style="margin:1rem 0; padding:0.5rem 1rem; border:1px solid var(--border); border-radius:6px;">
     <legend><strong>{{ unit.name }}</strong></legend>
     {% if unit.occupancies %}
       {% set sorted_occs = unit.occupancies | sort(attribute='start_date') %}
