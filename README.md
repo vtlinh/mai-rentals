@@ -1,6 +1,55 @@
 # mai-rentals
 
-Web app for tracking how much each rental unit owes in shared utility bills. A bill covers a date range and is assigned to one or more units; the cost is split across units in proportion to **person-days of occupancy that overlap the bill period** (tenants × overlapping days).
+Tracks how much each rental unit owes in shared utility bills. A bill covers a date range and is assigned to one or more units; the cost is split across units in proportion to **person-days of occupancy that overlap the bill period** (tenants × overlapping days).
+
+> **Status — in transit.** Currently a Flask app on Fly (live at https://mai-rentals.fly.dev) backed by SQLite. We're moving to a **static frontend on GitHub Pages** that talks directly to **Google Sheets** as its DB. The Flask app stays running until the static version is fully ported; new code lives under `/docs/`. Privacy in the new model is enforced by the Sheet's own share list — Google rejects requests from accounts that aren't shared on the sheet.
+
+## Static frontend (under `/docs/`)
+
+```
+docs/
+  index.html                ← page shell
+  css/style.css             ← shared styles (light + dark)
+  js/
+    config.js               ← OAuth client id + sheet id (PUBLIC; edit and commit)
+    auth.js                 ← Google Identity Services sign-in
+    sheets.js               ← REST client + TTL-cached batchGet
+    util.js                 ← date math, coercion, DOM helpers, flash
+    billing.js              ← split / recurring-instance math (port of billing.py)
+    main.js                 ← hash router, nav, sign-in shell
+    pages/                  ← one module per page (mount(container))
+      dashboard.js
+```
+
+### Setup (do this BEFORE enabling Pages):
+
+1. **OAuth Web Client ID** — Google Cloud Console → APIs & Services → Credentials → Create OAuth client ID, type "Web application". Add `https://vtlinh.github.io` and `http://localhost:8000` as **authorized JavaScript origins** (no redirect URIs needed). Enable the **Google Sheets API** on the same project.
+2. **Sheet** — create an empty Google Sheet, copy its ID from the URL. Share it with every Google account that should have access (Editor for read+write, Viewer for read-only).
+3. **Fill in `docs/js/config.js`** with `OAUTH_CLIENT_ID` and `SHEET_ID`, commit.
+4. **Initialize tabs** — open the site, sign in, then in the browser console run `await window._ensureTabs()` once. This creates all 8 tabs with the right header rows.
+5. **Migrate existing data** (optional, only if you have a `rental.db`):
+   ```bash
+   pip install gspread
+   export GOOGLE_SHEETS_ID=<sheet id>
+   export GOOGLE_SHEETS_CREDENTIALS_JSON="$(cat path/to/service-account.json)"
+   python scripts/migrate_sqlite_to_sheets.py /path/to/rental.db
+   ```
+   *(The migration script uses a service-account JSON; the frontend uses your personal Google sign-in. The two are independent.)*
+6. **Enable GitHub Pages** — repo Settings → Pages → Source: `Deploy from a branch` → `main` / `/docs`. The site appears at `https://vtlinh.github.io/mai-rentals/`.
+
+### Local dev for the static frontend
+
+```bash
+cd docs
+python -m http.server 8000
+# open http://localhost:8000
+```
+
+Add `http://localhost:8000` to the OAuth client's authorized JS origins, then sign in normally.
+
+---
+
+(Below: the existing Flask app, still the source of truth until the static version is fully ported.)
 
 Live at https://mai-rentals.fly.dev (Google sign-in, allowlist-gated).
 

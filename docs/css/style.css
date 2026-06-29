@@ -1,0 +1,132 @@
+/* Color tokens — defaults are light mode; overridden under prefers-color-scheme: dark. */
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --text: #222222;
+  --muted: #777777;
+  --surface: #ffffff;
+  --border: #dddddd;
+  --row-border: #eeeeee;
+  --th-bg: #f4f4f4;
+  --flash-bg: #e7f5e7;
+  --flash-border: #b6dfb6;
+  --flash-bg-err: #fde7e7;
+  --flash-border-err: #f3b9b9;
+  --link: #2563eb;
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --secondary-bg: #ffffff;
+  --secondary-hover: #eff4ff;
+  --danger: #c0392b;
+  --danger-hover: #fdecea;
+  --accent-green: #2a7a2a;
+  --accent-orange: #d97a00;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1a1d22;
+    --text: #e8eaed;
+    --muted: #9aa0a6;
+    --surface: #23272e;
+    --border: #3a3f47;
+    --row-border: #2e333b;
+    --th-bg: #2b3038;
+    --flash-bg: #1f3a26;
+    --flash-border: #3a6b48;
+    --flash-bg-err: #3a1f1f;
+    --flash-border-err: #6b3a3a;
+    --link: #6cb6ff;
+    --primary: #3b82f6;
+    --primary-hover: #60a5fa;
+    --secondary-bg: #2b313a;
+    --secondary-hover: #353c47;
+    --danger: #f08079;
+    --danger-hover: #4a2520;
+    --accent-green: #5cd35c;
+    --accent-orange: #ffa64d;
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  font-family: system-ui, sans-serif;
+  max-width: 960px; margin: 2rem auto; padding: 0 1rem;
+  color: var(--text); background: var(--bg);
+}
+
+a { color: var(--link); }
+
+nav {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem;
+  position: sticky; top: 0; z-index: 20;
+  background: var(--surface); padding: 0.6rem 0; border-bottom: 1px solid var(--border);
+}
+nav .spacer { margin-left: auto; }
+
+.sticky-save {
+  position: sticky; bottom: 0; z-index: 10;
+  display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;
+  background: var(--surface); border-top: 1px solid var(--border);
+  padding: 0.75rem 0; margin-top: 1.5rem;
+}
+.sticky-save .danger { margin-left: auto; }
+
+table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+th, td { border: 1px solid var(--border); padding: 0.5rem; text-align: left; }
+th { background: var(--th-bg); }
+
+.flash {
+  background: var(--flash-bg); border: 1px solid var(--flash-border);
+  padding: 0.5rem; margin: 0.5rem 0; border-radius: 4px;
+}
+.flash.err {
+  background: var(--flash-bg-err); border-color: var(--flash-border-err);
+}
+
+form.inline { display: inline; }
+label { display: block; margin-top: 0.5rem; }
+input:not([type=checkbox]):not([type=radio]), select, textarea {
+  padding: 0.5rem; min-width: 200px; max-width: 100%;
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); border-radius: 4px;
+}
+
+.btn, a.btn, button {
+  display: inline-block; font: inherit; line-height: 1.2; cursor: pointer;
+  padding: 0.45rem 0.8rem; border-radius: 6px; text-decoration: none;
+  border: 1px solid var(--primary); background: var(--primary); color: #fff;
+}
+.btn:hover, button:hover {
+  background: var(--primary-hover); border-color: var(--primary-hover);
+}
+.btn-secondary {
+  background: var(--secondary-bg); color: var(--link); border-color: var(--link);
+}
+.btn-secondary:hover { background: var(--secondary-hover); }
+.btn-danger {
+  background: var(--secondary-bg); color: var(--danger); border-color: var(--danger);
+}
+.btn-danger:hover { background: var(--danger-hover); border-color: var(--danger); }
+.btn-sm { padding: 0.2rem 0.5rem; font-size: 0.85rem; border-radius: 5px; }
+
+.actions { display: inline-flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; }
+
+.muted { color: var(--muted); font-size: 0.9rem; }
+.right { text-align: right; }
+
+.unit-row, .card {
+  border: 1px solid var(--row-border); border-radius: 6px;
+  padding: 0.75rem; margin: 1rem 0;
+}
+
+@media (max-width: 640px) {
+  body { margin: 1rem auto; }
+  nav { gap: 0.4rem 0.9rem; }
+  nav .spacer { margin-left: 0; flex-basis: 100%; margin-top: 0.3rem; }
+  input:not([type=checkbox]):not([type=radio]), select, textarea {
+    min-width: 0; width: 100%;
+  }
+  table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; white-space: nowrap; }
+  .btn-sm { padding: 0.3rem 0.55rem; }
+}
