@@ -14,10 +14,26 @@ import { ForbiddenError, ensureTabs } from "./sheets.js";
 import { clear, flash, h } from "./util.js";
 
 import mountDashboard from "./pages/dashboard.js";
+import mountManageOccupancy from "./pages/manage_occupancy.js";
+import mountManageUnits from "./pages/manage_units.js";
+import mountUnits from "./pages/units.js";
 
+/**
+ * Each route handler takes (container, params). Params is the array of
+ * remaining hash segments (e.g. for "#units/42/edit": route="units",
+ * params=["42", "edit"]). Routes with sub-segments dispatch inside the
+ * mount.
+ */
 const ROUTES = {
   "": mountDashboard,
   "dashboard": mountDashboard,
+  "units": (container, params) => {
+    if (params[0] === "manage") return mountManageUnits(container);
+    if (params.length >= 2 && params[1] === "edit") {
+      return mountManageOccupancy(container, params);
+    }
+    return mountUnits(container);
+  },
 };
 
 async function boot() {
@@ -69,10 +85,12 @@ async function render() {
     renderSignInStub(app);
     return;
   }
-  const route = (window.location.hash || "#dashboard").replace(/^#/, "").split("/")[0];
+  const segments = (window.location.hash || "#dashboard").replace(/^#/, "").split("/");
+  const route = segments[0] || "dashboard";
+  const params = segments.slice(1);
   const mount = ROUTES[route] || ROUTES["dashboard"];
   try {
-    await mount(app);
+    await mount(app, params);
   } catch (e) {
     if (e instanceof ForbiddenError) {
       renderForbidden(app, e.message);
