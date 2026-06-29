@@ -2,7 +2,7 @@ import json
 from collections import defaultdict
 from datetime import date, datetime
 
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask import Blueprint, Response, flash, redirect, render_template, request, url_for
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
@@ -21,6 +21,7 @@ from app.db import (
     admin_email,
     get_session,
 )
+from app.pdf import build_section_for_occupancy, build_statement_pdf
 
 bp = Blueprint("main", __name__)
 
@@ -159,6 +160,80 @@ def dashboard():
         return render_template(
             "dashboard.html", months=months, outstanding_rows=outstanding_rows
         )
+
+
+# ---------------- PDF statements ----------------
+
+
+@bp.route("/pdf")
+def pdf_picker():
+    with get_session() as s:
+        units = s.scalars(
+            select(Unit).options(selectinload(Unit.occupancies)).order_by(Unit.name)
+        ).all()
+        return render_template("pdf_picker.html", units=units)
+
+
+@bp.route("/pdf/generate", methods=["POST"])
+def pdf_generate():
+    raw = request.form.getlist("selection")
+    pairs: list[tuple[int, int]] = []
+    for value in raw:
+        try:
+            unit_id_str, occ_id_str = value.split(":", 1)
+            pairs.append((int(unit_id_str), int(occ_id_str)))
+        except (ValueError, AttributeError):
+            continue
+    if not pairs:
+        flash("Pick at least one unit/tenant set to generate a PDF.")
+        return redirect(url_for("main.pdf_picker"))
+
+    with get_session() as s:
+        sections = []
+        # Group selections by unit so we load each unit's bills + occupancies once.
+        by_unit: dict[int, list[int]] = defaultdict(list)
+        for uid, oid in pairs:
+            by_unit[uid].append(oid)
+
+        for uid, occ_ids in by_unit.items():
+            unit = s.get(Unit, uid)
+            if unit is None:
+                continue
+            bills_for_unit = s.scalars(
+                select(Bill)
+                .join(BillUnit, BillUnit.bill_id == Bill.id)
+                .where(BillUnit.unit_id == uid)
+                .options(selectinload(Bill.assignments).selectinload(BillUnit.unit))
+            ).all()
+            # split_bill needs occupancies for EVERY unit on each bill, not just the target,
+            # otherwise co-assigned units get 0 person-days and the target absorbs the full amount.
+            related_unit_ids = {uid} | {a.unit_id for b in bills_for_unit for a in b.assignments}
+            occ_map: dict[int, list[Occupancy]] = defaultdict(list)
+            for occ in s.scalars(
+                select(Occupancy).where(Occupancy.unit_id.in_(related_unit_ids))
+            ).all():
+                occ_map[occ.unit_id].append(occ)
+            payments_for_unit = {
+                (p.year, p.month, p.kind): p.amount
+                for p in s.scalars(select(Payment).where(Payment.unit_id == uid)).all()
+            }
+            for oid in occ_ids:
+                occ = next((o for o in occ_map[uid] if o.id == oid), None)
+                if occ is None:
+                    continue
+                sections.append(
+                    build_section_for_occupancy(
+                        unit, occ, bills_for_unit, occ_map, payments_for_unit,
+                    )
+                )
+
+    pdf_bytes = build_statement_pdf(sections)
+    filename = f"statement-{date.today().isoformat()}.pdf"
+    return Response(
+        pdf_bytes,
+        mimetype="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 # ---------------- Units ----------------
