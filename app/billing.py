@@ -1,9 +1,8 @@
 import calendar
-import json
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-from app.db import Bill, Occupancy
+from app.db import Bill, Occupancy, parse_recurrence_config
 
 
 def _overlap_days(a_start: date, a_end: date, b_start: date, b_end: date) -> int:
@@ -91,7 +90,7 @@ def recurring_instances(rb, today: date) -> list[tuple[date, date]]:
     """
     start = rb.start_date
     recurrence = rb.recurrence
-    config: list[int] = json.loads(rb.recurrence_config or "[]")
+    config: list[int] = parse_recurrence_config(rb.recurrence_config)
     instances: list[tuple[date, date]] = []
 
     # Optional cap: never generate periods that begin after the template's end_date.

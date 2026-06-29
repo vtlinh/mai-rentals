@@ -3,12 +3,10 @@ primary_region = "sjc"
 
 [build]
 
-[env]
-  RENTAL_DB_PATH = "/data/rental.db"
-
-[[mounts]]
-  source = "rental_data"
-  destination = "/data"
+# Data lives in a Google Sheet now (see README). Required Fly secrets:
+#   GOOGLE_SHEETS_ID, GOOGLE_SHEETS_CREDENTIALS_JSON
+# The /data volume is no longer needed and can be detached after the SQLite
+# migration to Sheets has completed.
 
 [http_service]
   internal_port = 8080

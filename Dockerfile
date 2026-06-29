@@ -19,8 +19,6 @@ RUN uv sync --frozen --no-dev --no-install-project
 COPY . .
 RUN uv sync --frozen --no-dev
 
-# SQLite lives on a Fly volume mounted at /data.
-ENV RENTAL_DB_PATH=/data/rental.db
 EXPOSE 8080
 
 CMD ["uv", "run", "gunicorn", "-w", "2", "-b", "0.0.0.0:8080", "run:app"]

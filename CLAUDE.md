@@ -25,13 +25,20 @@ GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, FLASK_SECRET_KEY
 
 Without them `/login` renders a "missing config" message instead of redirecting to Google. The OAuth redirect URI is `http://localhost:5000/auth/callback`.
 
+Two more env vars wire the Sheets-backed DB (see README for setup). When unset, an in-memory backend is used (lost on restart — convenient for tests/local hacking):
+
+```
+GOOGLE_SHEETS_ID, GOOGLE_SHEETS_CREDENTIALS_JSON
+```
+
 ## Architecture
 
-- **`app/__init__.py`** — Flask app factory. Calls `init_db()` then `seed_authorized_users()` on every startup, so the allowlist is self-healing. Registers Jinja globals (`bill_due_date`, `current_email`, `is_admin`, `admin_email`) so templates can use them without per-route context.
-- **`app/db.py`** — SQLAlchemy 2.0 models: `Unit`, `Occupancy` (per-unit headcount × date range), `Bill`, `BillUnit` (M2M assignment), `AuthorizedUser`. `ADMIN_EMAIL` is hardcoded; `SEED_EMAILS` defines the initial allowlist. Uses a single SQLite file `rental.db` next to the package. `get_session()` is a contextmanager that **auto-commits on exit** — don't call `session.commit()` inside the `with` block.
-- **`app/billing.py`** — Pure functions, no DB. The split algorithm lives here. **End dates are inclusive** (`_overlap_days` adds `+1`), which the spec example test pins down (2/5–3/4 = 28 days). `bill_due_date(end)` returns the 1st of the following month — due date is never stored, always derived.
+- **`app/__init__.py`** — Flask app factory. Calls `init_db()` then `seed_authorized_users()` and `seed_billing_kinds()` on every startup (idempotent). Registers Jinja globals (`bill_due_date`, `current_email`, `is_admin`, `admin_email`).
+- **`app/sheets.py`** — Pluggable storage backend. `GSpreadBackend` talks to Google Sheets via a service account; `InMemoryBackend` is used when the env vars aren't set. Reads are TTL-cached (~10s) so a single page render doesn't make N API calls.
+- **`app/db.py`** — Dataclasses (`Unit`, `Occupancy`, `Bill`, `BillUnit`, `RecurringBill`, `RecurringBillUnit`, `Payment`, `BillingKind`, `AuthorizedUser`) + module-level CRUD functions (`units_all`, `unit_create`, `bill_update`, `recurring_with_assignments`, etc.). Each table is one tab in the sheet with a human-readable header row; IDs are visible integers so you can edit the sheet by hand. `recurrence_config` is stored as a CSV string like `"1,15"`, not JSON. Booleans are `TRUE`/`FALSE`.
+- **`app/billing.py`** — Pure functions, no storage. The split algorithm lives here. **End dates are inclusive** (`_overlap_days` adds `+1`), which the spec example test pins down (2/5–3/4 = 28 days). `bill_due_date(end)` returns the 1st of the following month — due date is never stored, always derived.
 - **`app/auth.py`** — Authlib + Google OIDC. Auth state lives in `flask.session` keyed by `email`. `is_admin(email)` is a simple equality check against `ADMIN_EMAIL`.
-- **`app/routes.py`** — Single blueprint `main`. **Auth is enforced at the blueprint level** via `@bp.before_request`, which redirects to `/login` if the session email isn't on the allowlist. Admin-only routes additionally call `_require_admin()`. The `auth` blueprint is registered separately so its routes bypass this guard.
+- **`app/routes.py`** — Single blueprint `main`. **Auth is enforced at the blueprint level** via `@bp.before_request`. Admin-only routes additionally call `_require_admin()`. The `auth` blueprint is registered separately so its routes bypass this guard.
 
 ## Bill-splitting invariants
 
@@ -48,4 +55,4 @@ The dashboard groups bills by the month of their derived due date, sorted latest
 
 ## Schema changes
 
-There are no migrations. `Base.metadata.create_all()` is additive — new tables/columns on existing tables won't be applied. When changing an existing column, delete `rental.db` (it's gitignored) and restart; the seed function will repopulate the allowlist.
+The "schema" is just the header row of each tab in the sheet. `init_db()` calls `ensure_tab(...)` on startup for every tab in `TABS`, which creates the tab if missing and overwrites the header row to match the declared columns. To add a column: append the column name to the right entry in `TABS`, restart the app, and the header row gains the new column (existing rows have a blank value there). To rename a column: change the entry and rename the column in the sheet by hand — there is no automatic rename.

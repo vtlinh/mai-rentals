@@ -16,7 +16,50 @@ Live at https://mai-rentals.fly.dev (Google sign-in, allowlist-gated).
 
 ## Stack
 
-Python 3.12 · Flask · SQLAlchemy 2.0 · SQLite · Authlib (Google OIDC) · uv · gunicorn · Fly.io
+Python 3.12 · Flask · **Google Sheets (gspread)** as the DB · Authlib (Google OIDC) · uv · gunicorn · Fly.io
+
+## Sheets-backed storage
+
+All data lives in a Google Sheet (one tab per "table") so you can view and hand-edit rows directly. The columns are plain — no JSON cells — and IDs are visible so you can edit foreign keys. Direct edits show up in the app within ~10 seconds (the cache TTL).
+
+Tabs and columns:
+
+| Tab | Columns |
+|---|---|
+| `units` | id, name, note |
+| `occupancies` | id, unit_id, tenant_count, start_date, end_date |
+| `bills` | id, kind, amount, start_date, end_date, note, recurring_bill_id |
+| `bill_units` | id, bill_id, unit_id |
+| `recurring_bills` | id, kind, amount, note, recurrence, recurrence_config, start_date, end_date, active, is_credit |
+| `recurring_bill_units` | id, recurring_bill_id, unit_id |
+| `payments` | id, unit_id, year, month, kind, amount |
+| `categories` | id, name |
+| `authorized_users` | id, email |
+
+Conventions: dates as `YYYY-MM-DD`, booleans as `TRUE`/`FALSE`, `recurrence_config` as a CSV like `1,15`. Empty cell = NULL.
+
+### One-time setup
+
+1. **Create a service account** in Google Cloud Console → IAM → Service Accounts. Download a JSON key. Enable the **Google Sheets API** for the project.
+2. **Create an empty Google Sheet** and **share it with the service account's email** (Editor access). Copy the spreadsheet ID from its URL (the long string between `/d/` and `/edit`).
+3. **Set two Fly secrets**:
+   ```bash
+   flyctl secrets set GOOGLE_SHEETS_ID=<your spreadsheet id>
+   flyctl secrets set GOOGLE_SHEETS_CREDENTIALS_JSON="$(cat path/to/service-account.json)"
+   ```
+4. On the next deploy, the app calls `init_db()`, which creates each tab with its header row.
+
+### Migrating existing SQLite data
+
+If you're moving from the previous SQLite backend, copy `rental.db` from your Fly volume to local, then run the one-shot migration:
+
+```bash
+export GOOGLE_SHEETS_ID=<your sheet id>
+export GOOGLE_SHEETS_CREDENTIALS_JSON="$(cat path/to/service-account.json)"
+uv run python scripts/migrate_sqlite_to_sheets.py /path/to/rental.db
+```
+
+The script wipes the sheet's data rows (keeping headers) before re-writing, so it's safe to re-run.
 
 ## Local development
 
@@ -34,6 +77,11 @@ GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
 FLASK_SECRET_KEY=...
 ADMIN_EMAIL=you@example.com
+
+# Sheets-backed DB (optional locally — if unset, an in-memory backend
+# is used, so data evaporates on restart):
+GOOGLE_SHEETS_ID=...
+GOOGLE_SHEETS_CREDENTIALS_JSON={ "type": "service_account", ... }
 ```
 
 The OAuth client (Google Cloud console → Credentials) needs `http://localhost:5000/auth/callback` and `https://mai-rentals.fly.dev/auth/callback` as authorized redirect URIs.
@@ -60,7 +108,7 @@ Pushes to `main` trigger `.github/workflows/fly-deploy.yml`, which runs `flyctl 
 App configuration:
 
 - Region `sjc`, shared 256 MB VM.
-- Persistent SQLite at `/data/rental.db` on the `rental_data` volume (1 GB).
-- App secrets (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `FLASK_SECRET_KEY`, `ADMIN_EMAIL`) are stored as Fly secrets — not in the repo.
+- Data lives in Google Sheets (see "Sheets-backed storage" above). The old `/data/rental.db` volume is no longer used and can be detached after the SQLite-to-Sheets migration has run.
+- App secrets (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `FLASK_SECRET_KEY`, `ADMIN_EMAIL`, `GOOGLE_SHEETS_ID`, `GOOGLE_SHEETS_CREDENTIALS_JSON`) are stored as Fly secrets — not in the repo.
 
 Manual deploy: `flyctl deploy`.

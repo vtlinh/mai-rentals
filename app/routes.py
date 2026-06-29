@@ -1,26 +1,12 @@
-import json
 from collections import defaultdict
 from datetime import date, datetime
 
 from flask import Blueprint, Response, flash, redirect, render_template, request, url_for
-from sqlalchemy import select
-from sqlalchemy.orm import selectinload
 
+from app import db
 from app.auth import current_email, is_admin, is_authorized
 from app.billing import bill_due_date, recurring_instances, split_bill
-from app.db import (
-    AuthorizedUser,
-    Bill,
-    BillingKind,
-    BillUnit,
-    Occupancy,
-    Payment,
-    RecurringBill,
-    RecurringBillUnit,
-    Unit,
-    admin_email,
-    get_session,
-)
+from app.db import admin_email
 from app.pdf import build_section_for_occupancy, build_statement_pdf
 
 bp = Blueprint("main", __name__)
@@ -49,8 +35,10 @@ def _parse_date(s: str) -> date:
     return datetime.strptime(s, "%Y-%m-%d").date()
 
 
-def _kind_names(s) -> list[str]:
-    return [k.name for k in s.scalars(select(BillingKind).order_by(BillingKind.name)).all()]
+def _parse_optional_date(value):
+    if not value or not value.strip():
+        return None
+    return _parse_date(value.strip())
 
 
 @bp.route("/")
@@ -60,106 +48,82 @@ def index():
 
 @bp.route("/dashboard")
 def dashboard():
-    with get_session() as s:
-        all_bills = s.scalars(
-            select(Bill)
-            .options(selectinload(Bill.assignments).selectinload(BillUnit.unit))
-        ).all()
+    # Apply any recurring templates on dashboard view too, so the dashboard
+    # reflects bills due as of today even if the Bills page hasn't been hit.
+    _apply_recurring_bills()
 
-        unit_ids = {a.unit_id for b in all_bills for a in b.assignments}
-        occ_map: dict[int, list[Occupancy]] = defaultdict(list)
-        if unit_ids:
-            occs = s.scalars(
-                select(Occupancy).where(Occupancy.unit_id.in_(unit_ids))
-            ).all()
-            for o in occs:
-                occ_map[o.unit_id].append(o)
+    all_bills = db.bills_with_assignments()
 
-        # Group bills by (year, month) of their due date.
-        by_month: dict[tuple[int, int], list[Bill]] = defaultdict(list)
-        for b in all_bills:
-            due = bill_due_date(b.end_date)
-            by_month[(due.year, due.month)].append(b)
+    unit_ids = {a.unit_id for b in all_bills for a in b.assignments}
+    occ_map = db.occupancies_for_units(unit_ids) if unit_ids else {}
 
-        # unit name -> id (for payment lookups)
-        units_by_id = {u.id: u for u in s.scalars(select(Unit)).all()}
-        name_to_id = {u.name: u.id for u in units_by_id.values()}
+    # Group bills by (year, month) of their due date.
+    by_month: dict[tuple[int, int], list] = defaultdict(list)
+    for b in all_bills:
+        due = bill_due_date(b.end_date)
+        by_month[(due.year, due.month)].append(b)
 
-        # All payments keyed by (unit_id, year, month, kind).
-        all_payments = s.scalars(select(Payment)).all()
-        pay_map: dict[tuple[int, int, int, str], Payment] = {
-            (p.unit_id, p.year, p.month, p.kind): p for p in all_payments
-        }
+    units_by_id = {u.id: u for u in db.units_all()}
+    name_to_id = {u.name: u.id for u in units_by_id.values()}
 
-        # Outstanding-by-unit totals across all months.
-        outstanding: dict[str, float] = defaultdict(float)
+    pay_map: dict[tuple[int, int, int, str], db.Payment] = {
+        (p.unit_id, p.year, p.month, p.kind): p for p in db.payments_all()
+    }
 
-        months = []
-        for key in sorted(by_month.keys(), reverse=True):
-            year, month = key
-            bills = sorted(by_month[key], key=lambda b: (b.kind.lower(), b.end_date))
-            bill_rows = []
-            # totals[unit_name][kind] = amount
-            totals: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
-            kinds_present: set[str] = set()
-            for b in bills:
-                shares = split_bill(b, occ_map)
-                bill_total = sum(sh.amount for sh in shares)
-                bill_rows.append({"bill": b, "total": bill_total})
-                kinds_present.add(b.kind)
-                for sh in shares:
-                    totals[sh.unit_name][b.kind] += sh.amount
+    outstanding: dict[str, float] = defaultdict(float)
+    months = []
+    for key in sorted(by_month.keys(), reverse=True):
+        year, month = key
+        bills = sorted(by_month[key], key=lambda b: (b.kind.lower(), b.end_date))
+        bill_rows = []
+        totals: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
+        kinds_present: set[str] = set()
+        for b in bills:
+            shares = split_bill(b, occ_map)
+            bill_total = sum(sh.amount for sh in shares)
+            bill_rows.append({"bill": b, "total": bill_total})
+            kinds_present.add(b.kind)
+            for sh in shares:
+                totals[sh.unit_name][b.kind] += sh.amount
 
-            kinds_sorted = sorted(kinds_present)
-            unit_rows = []
-            for unit_name in sorted(totals.keys()):
-                by_kind = totals[unit_name]
-                row_total = sum(by_kind.values())
-                if round(row_total, 2) == 0:
-                    continue
-                uid = name_to_id.get(unit_name)
-                cells = []
-                for k in kinds_sorted:
-                    owed = round(by_kind.get(k, 0.0), 2)
-                    payment = pay_map.get((uid, year, month, k)) if uid else None
-                    paid = round(payment.amount, 2) if payment else 0.0
-                    remaining = round(owed - paid, 2)
-                    cells.append(
-                        {
-                            "kind": k,
-                            "amount": owed,
-                            "paid": paid,
-                            "remaining": remaining,
-                            "has_payment": payment is not None,
-                        }
-                    )
-                    if owed > 0:
-                        outstanding[unit_name] += max(remaining, 0.0)
-                unit_rows.append(
-                    {
-                        "unit_name": unit_name,
-                        "unit_id": uid,
-                        "cells": cells,
-                        "total": round(row_total, 2),
-                    }
-                )
+        kinds_sorted = sorted(kinds_present)
+        unit_rows = []
+        for unit_name in sorted(totals.keys()):
+            by_kind = totals[unit_name]
+            row_total = sum(by_kind.values())
+            if round(row_total, 2) == 0:
+                continue
+            uid = name_to_id.get(unit_name)
+            cells = []
+            for k in kinds_sorted:
+                owed = round(by_kind.get(k, 0.0), 2)
+                payment = pay_map.get((uid, year, month, k)) if uid else None
+                paid = round(payment.amount, 2) if payment else 0.0
+                remaining = round(owed - paid, 2)
+                cells.append({
+                    "kind": k, "amount": owed, "paid": paid,
+                    "remaining": remaining, "has_payment": payment is not None,
+                })
+                if owed > 0:
+                    outstanding[unit_name] += max(remaining, 0.0)
+            unit_rows.append({
+                "unit_name": unit_name, "unit_id": uid,
+                "cells": cells, "total": round(row_total, 2),
+            })
 
-            months.append(
-                {
-                    "year": year,
-                    "month": month,
-                    "kinds": kinds_sorted,
-                    "unit_rows": unit_rows,
-                    "bill_rows": bill_rows,
-                }
-            )
+        months.append({
+            "year": year, "month": month, "kinds": kinds_sorted,
+            "unit_rows": unit_rows, "bill_rows": bill_rows,
+        })
 
-        outstanding_rows = [
-            (name, round(amt, 2)) for name, amt in sorted(outstanding.items()) if round(amt, 2) > 0
-        ]
-        return render_template(
-            "dashboard.html", months=months, outstanding_rows=outstanding_rows
-        )
+    outstanding_rows = [
+        (name, round(amt, 2))
+        for name, amt in sorted(outstanding.items())
+        if round(amt, 2) > 0
+    ]
+    return render_template(
+        "dashboard.html", months=months, outstanding_rows=outstanding_rows
+    )
 
 
 # ---------------- PDF statements ----------------
@@ -167,11 +131,7 @@ def dashboard():
 
 @bp.route("/pdf")
 def pdf_picker():
-    with get_session() as s:
-        units = s.scalars(
-            select(Unit).options(selectinload(Unit.occupancies)).order_by(Unit.name)
-        ).all()
-        return render_template("pdf_picker.html", units=units)
+    return render_template("pdf_picker.html", units=db.units_with_occupancies())
 
 
 @bp.route("/pdf/generate", methods=["POST"])
@@ -180,52 +140,39 @@ def pdf_generate():
     pairs: list[tuple[int, int]] = []
     for value in raw:
         try:
-            unit_id_str, occ_id_str = value.split(":", 1)
-            pairs.append((int(unit_id_str), int(occ_id_str)))
+            uid_str, oid_str = value.split(":", 1)
+            pairs.append((int(uid_str), int(oid_str)))
         except (ValueError, AttributeError):
             continue
     if not pairs:
         flash("Pick at least one unit/tenant set to generate a PDF.")
         return redirect(url_for("main.pdf_picker"))
 
-    with get_session() as s:
-        sections = []
-        # Group selections by unit so we load each unit's bills + occupancies once.
-        by_unit: dict[int, list[int]] = defaultdict(list)
-        for uid, oid in pairs:
-            by_unit[uid].append(oid)
+    sections = []
+    by_unit: dict[int, list[int]] = defaultdict(list)
+    for uid, oid in pairs:
+        by_unit[uid].append(oid)
 
-        for uid, occ_ids in by_unit.items():
-            unit = s.get(Unit, uid)
-            if unit is None:
+    for uid, occ_ids in by_unit.items():
+        unit = db.unit_by_id(uid)
+        if unit is None:
+            continue
+        bills_for_unit = db.bills_for_unit(uid, with_assignments=True)
+        related_unit_ids = {uid} | {a.unit_id for b in bills_for_unit for a in b.assignments}
+        occ_map = db.occupancies_for_units(related_unit_ids)
+        payments_for_unit = {
+            (p.year, p.month, p.kind): p.amount
+            for p in db.payments_all() if p.unit_id == uid
+        }
+        for oid in occ_ids:
+            occ = next((o for o in occ_map.get(uid, []) if o.id == oid), None)
+            if occ is None:
                 continue
-            bills_for_unit = s.scalars(
-                select(Bill)
-                .join(BillUnit, BillUnit.bill_id == Bill.id)
-                .where(BillUnit.unit_id == uid)
-                .options(selectinload(Bill.assignments).selectinload(BillUnit.unit))
-            ).all()
-            # split_bill needs occupancies for EVERY unit on each bill, not just the target,
-            # otherwise co-assigned units get 0 person-days and the target absorbs the full amount.
-            related_unit_ids = {uid} | {a.unit_id for b in bills_for_unit for a in b.assignments}
-            occ_map: dict[int, list[Occupancy]] = defaultdict(list)
-            for occ in s.scalars(
-                select(Occupancy).where(Occupancy.unit_id.in_(related_unit_ids))
-            ).all():
-                occ_map[occ.unit_id].append(occ)
-            payments_for_unit = {
-                (p.year, p.month, p.kind): p.amount
-                for p in s.scalars(select(Payment).where(Payment.unit_id == uid)).all()
-            }
-            for oid in occ_ids:
-                occ = next((o for o in occ_map[uid] if o.id == oid), None)
-                if occ is None:
-                    continue
-                sections.append(
-                    build_section_for_occupancy(
-                        unit, occ, bills_for_unit, occ_map, payments_for_unit,
-                    )
+            sections.append(
+                build_section_for_occupancy(
+                    unit, occ, bills_for_unit, occ_map, payments_for_unit,
                 )
+            )
 
     pdf_bytes = build_statement_pdf(sections)
     filename = f"statement-{date.today().isoformat()}.pdf"
@@ -241,11 +188,7 @@ def pdf_generate():
 
 @bp.route("/units")
 def units_list():
-    with get_session() as s:
-        units = s.scalars(
-            select(Unit).options(selectinload(Unit.occupancies)).order_by(Unit.name)
-        ).all()
-        return render_template("units.html", units=units)
+    return render_template("units.html", units=db.units_with_occupancies())
 
 
 @bp.route("/units/manage", methods=["GET", "POST"])
@@ -255,23 +198,20 @@ def units_manage():
         existing_names = request.form.getlist("existing_name")
         new_names = request.form.getlist("new_name")
         renamed, added = 0, 0
-        with get_session() as s:
-            # Update existing units' names (preserve notes).
-            for sid, raw_name in zip(existing_ids, existing_names):
-                name = raw_name.strip()
-                if not name or not sid.isdigit():
-                    continue
-                unit = s.get(Unit, int(sid))
-                if unit and unit.name != name:
-                    unit.name = name
-                    renamed += 1
-            # Create newly-added units (skip blanks).
-            for raw_name in new_names:
-                name = raw_name.strip()
-                if not name:
-                    continue
-                s.add(Unit(name=name, note=""))
-                added += 1
+        for sid, raw_name in zip(existing_ids, existing_names):
+            name = raw_name.strip()
+            if not name or not sid.isdigit():
+                continue
+            unit = db.unit_by_id(int(sid))
+            if unit and unit.name != name:
+                db.unit_update(unit.id, name=name)
+                renamed += 1
+        for raw_name in new_names:
+            name = raw_name.strip()
+            if not name:
+                continue
+            db.unit_create(name=name, note="")
+            added += 1
         if renamed or added:
             parts = []
             if added:
@@ -281,9 +221,7 @@ def units_manage():
             flash("Units: " + ", ".join(parts) + ".")
         return redirect(url_for("main.units_manage"))
 
-    with get_session() as s:
-        units = s.scalars(select(Unit).order_by(Unit.name)).all()
-        return render_template("manage_units.html", units=units)
+    return render_template("manage_units.html", units=db.units_all())
 
 
 @bp.route("/units/new", methods=["GET", "POST"])
@@ -291,8 +229,7 @@ def units_new():
     if request.method == "POST":
         name = request.form["name"].strip()
         note = request.form.get("note", "").strip()
-        with get_session() as s:
-            s.add(Unit(name=name, note=note))
+        db.unit_create(name=name, note=note)
         flash(f"Unit '{name}' added.")
         return redirect(url_for("main.units_manage"))
     return render_template("unit_form.html", unit=None)
@@ -300,26 +237,28 @@ def units_new():
 
 @bp.route("/units/<int:uid>/edit", methods=["GET", "POST"])
 def units_edit(uid: int):
-    with get_session() as s:
-        unit = s.get(Unit, uid)
-        if unit is None:
-            flash("Unit not found.")
-            return redirect(url_for("main.units_list"))
-        if request.method == "POST":
-            unit.name = request.form["name"].strip()
-            unit.note = request.form.get("note", "").strip()
-            flash("Unit updated.")
-            return redirect(url_for("main.units_manage"))
-        return render_template("unit_form.html", unit=unit)
+    units_with_occs = db.units_with_occupancies()
+    unit = next((u for u in units_with_occs if u.id == uid), None)
+    if unit is None:
+        flash("Unit not found.")
+        return redirect(url_for("main.units_list"))
+    if request.method == "POST":
+        db.unit_update(
+            uid,
+            name=request.form["name"].strip(),
+            note=request.form.get("note", "").strip(),
+        )
+        flash("Unit updated.")
+        return redirect(url_for("main.units_manage"))
+    return render_template("unit_form.html", unit=unit)
 
 
 @bp.route("/units/<int:uid>/delete", methods=["POST"])
 def units_delete(uid: int):
-    with get_session() as s:
-        unit = s.get(Unit, uid)
-        if unit:
-            s.delete(unit)
-            flash(f"Unit '{unit.name}' removed.")
+    unit = db.unit_by_id(uid)
+    if unit:
+        db.unit_delete(uid)
+        flash(f"Unit '{unit.name}' removed.")
     return redirect(url_for("main.units_list"))
 
 
@@ -328,50 +267,46 @@ def units_delete(uid: int):
 
 @bp.route("/units/<int:uid>/occupancies/new", methods=["GET", "POST"])
 def occ_new(uid: int):
-    with get_session() as s:
-        unit = s.get(Unit, uid)
-        if unit is None:
-            return redirect(url_for("main.units_list"))
-        if request.method == "POST":
-            s.add(
-                Occupancy(
-                    unit_id=uid,
-                    tenant_count=int(request.form["tenant_count"]),
-                    start_date=_parse_date(request.form["start_date"]),
-                    end_date=_parse_date(request.form["end_date"]),
-                )
-            )
-            flash("Occupancy added.")
-            return redirect(url_for("main.units_edit", uid=uid))
-        # The add form lives inline on the unit edit page.
+    unit = db.unit_by_id(uid)
+    if unit is None:
+        return redirect(url_for("main.units_list"))
+    if request.method == "POST":
+        db.occupancy_create(
+            unit_id=uid,
+            tenant_count=int(request.form["tenant_count"]),
+            start_date=_parse_date(request.form["start_date"]),
+            end_date=_parse_date(request.form["end_date"]),
+        )
+        flash("Occupancy added.")
         return redirect(url_for("main.units_edit", uid=uid))
+    return redirect(url_for("main.units_edit", uid=uid))
 
 
 @bp.route("/occupancies/<int:oid>/edit", methods=["GET", "POST"])
 def occ_edit(oid: int):
-    with get_session() as s:
-        occ = s.get(Occupancy, oid)
-        if occ is None:
-            return redirect(url_for("main.units_list"))
-        uid = occ.unit_id
-        if request.method == "POST":
-            occ.tenant_count = int(request.form["tenant_count"])
-            occ.start_date = _parse_date(request.form["start_date"])
-            occ.end_date = _parse_date(request.form["end_date"])
-            flash("Occupancy updated.")
-            return redirect(url_for("main.units_edit", uid=uid))
-        # Editing happens inline on the unit edit page.
+    occ = db.occupancy_by_id(oid)
+    if occ is None:
+        return redirect(url_for("main.units_list"))
+    uid = occ.unit_id
+    if request.method == "POST":
+        db.occupancy_update(
+            oid,
+            tenant_count=int(request.form["tenant_count"]),
+            start_date=_parse_date(request.form["start_date"]),
+            end_date=_parse_date(request.form["end_date"]),
+        )
+        flash("Occupancy updated.")
         return redirect(url_for("main.units_edit", uid=uid))
+    return redirect(url_for("main.units_edit", uid=uid))
 
 
 @bp.route("/occupancies/<int:oid>/delete", methods=["POST"])
 def occ_delete(oid: int):
-    with get_session() as s:
-        occ = s.get(Occupancy, oid)
-        uid = occ.unit_id if occ else None
-        if occ:
-            s.delete(occ)
-            flash("Occupancy removed.")
+    occ = db.occupancy_by_id(oid)
+    uid = occ.unit_id if occ else None
+    if occ:
+        db.occupancy_delete(oid)
+        flash("Occupancy removed.")
     if uid:
         return redirect(url_for("main.units_edit", uid=uid))
     return redirect(url_for("main.units_list"))
@@ -382,106 +317,84 @@ def occ_delete(oid: int):
 
 @bp.route("/bills")
 def bills_list():
-    with get_session() as s:
-        # One-off bills only — recurring-generated bills live in their own section.
-        bills = s.scalars(
-            select(Bill)
-            .where(Bill.recurring_bill_id.is_(None))
-            .options(selectinload(Bill.assignments).selectinload(BillUnit.unit))
-            .order_by(Bill.end_date.desc())
-        ).all()
-        recurring_rows = _recurring_summary_rows(s)
-        return render_template("bills.html", bills=bills, recurring_rows=recurring_rows)
+    _apply_recurring_bills()
+    bills = [b for b in db.bills_with_assignments() if b.recurring_bill_id is None]
+    bills.sort(key=lambda b: b.end_date, reverse=True)
+    recurring_rows = _recurring_summary_rows()
+    return render_template("bills.html", bills=bills, recurring_rows=recurring_rows)
 
 
 @bp.route("/bills/new", methods=["GET", "POST"])
 def bills_new():
-    with get_session() as s:
-        units = s.scalars(select(Unit).order_by(Unit.name)).all()
-        kinds = _kind_names(s)
-        if request.method == "POST":
-            bill = Bill(
-                kind=request.form["kind"],
-                amount=float(request.form["amount"]),
-                start_date=_parse_date(request.form["start_date"]),
-                end_date=_parse_date(request.form["end_date"]),
-                note=request.form.get("note", "").strip(),
-            )
-            s.add(bill)
-            s.flush()
-            for uid in request.form.getlist("unit_ids"):
-                s.add(BillUnit(bill_id=bill.id, unit_id=int(uid)))
-            flash("Bill added.")
-            return redirect(url_for("main.bills_list"))
-        return render_template("bill_form.html", bill=None, units=units, selected_ids=set(), kinds=kinds)
+    units = db.units_all()
+    kinds = db.category_names()
+    if request.method == "POST":
+        unit_ids = [int(x) for x in request.form.getlist("unit_ids")]
+        db.bill_create(
+            kind=request.form["kind"],
+            amount=float(request.form["amount"]),
+            start_date=_parse_date(request.form["start_date"]),
+            end_date=_parse_date(request.form["end_date"]),
+            note=request.form.get("note", "").strip(),
+            unit_ids=unit_ids,
+        )
+        flash("Bill added.")
+        return redirect(url_for("main.bills_list"))
+    return render_template("bill_form.html", bill=None, units=units,
+                            selected_ids=set(), kinds=kinds)
 
 
 @bp.route("/bills/<int:bid>/edit", methods=["GET", "POST"])
 def bills_edit(bid: int):
-    with get_session() as s:
-        bill = s.get(Bill, bid)
-        if bill is None:
-            return redirect(url_for("main.bills_list"))
-        units = s.scalars(select(Unit).order_by(Unit.name)).all()
-        kinds = _kind_names(s)
-        if request.method == "POST":
-            bill.kind = request.form["kind"]
-            bill.amount = float(request.form["amount"])
-            bill.start_date = _parse_date(request.form["start_date"])
-            bill.end_date = _parse_date(request.form["end_date"])
-            bill.note = request.form.get("note", "").strip()
-            for a in list(bill.assignments):
-                s.delete(a)
-            s.flush()
-            for uid in request.form.getlist("unit_ids"):
-                s.add(BillUnit(bill_id=bill.id, unit_id=int(uid)))
-            flash("Bill updated.")
-            return redirect(url_for("main.bills_list"))
-        selected = {a.unit_id for a in bill.assignments}
-        return render_template("bill_form.html", bill=bill, units=units, selected_ids=selected, kinds=kinds)
+    bill = db.bill_by_id(bid, with_assignments=True)
+    if bill is None:
+        return redirect(url_for("main.bills_list"))
+    units = db.units_all()
+    kinds = db.category_names()
+    if request.method == "POST":
+        unit_ids = [int(x) for x in request.form.getlist("unit_ids")]
+        db.bill_update(
+            bid,
+            kind=request.form["kind"],
+            amount=float(request.form["amount"]),
+            start_date=_parse_date(request.form["start_date"]),
+            end_date=_parse_date(request.form["end_date"]),
+            note=request.form.get("note", "").strip(),
+            unit_ids=unit_ids,
+        )
+        flash("Bill updated.")
+        return redirect(url_for("main.bills_list"))
+    selected = {a.unit_id for a in bill.assignments}
+    return render_template("bill_form.html", bill=bill, units=units,
+                            selected_ids=selected, kinds=kinds)
 
 
 @bp.route("/bills/<int:bid>/delete", methods=["POST"])
 def bills_delete(bid: int):
-    with get_session() as s:
-        bill = s.get(Bill, bid)
-        if bill:
-            s.delete(bill)
-            flash("Bill removed.")
+    if db.bill_by_id(bid):
+        db.bill_delete(bid)
+        flash("Bill removed.")
     return redirect(url_for("main.bills_list"))
 
 
 @bp.route("/bills/<int:bid>")
 def bills_detail(bid: int):
-    with get_session() as s:
-        bill = s.get(
-            Bill,
-            bid,
-            options=[selectinload(Bill.assignments).selectinload(BillUnit.unit)],
-        )
-        if bill is None:
-            return redirect(url_for("main.bills_list"))
-        unit_ids = {a.unit_id for a in bill.assignments}
-        occ_map: dict[int, list[Occupancy]] = defaultdict(list)
-        if unit_ids:
-            occs = s.scalars(
-                select(Occupancy).where(Occupancy.unit_id.in_(unit_ids))
-            ).all()
-            for o in occs:
-                occ_map[o.unit_id].append(o)
-        shares = split_bill(bill, occ_map)
-        return render_template("bill_detail.html", bill=bill, shares=shares)
+    bill = db.bill_by_id(bid, with_assignments=True)
+    if bill is None:
+        return redirect(url_for("main.bills_list"))
+    unit_ids = {a.unit_id for a in bill.assignments}
+    occ_map = db.occupancies_for_units(unit_ids) if unit_ids else {}
+    shares = split_bill(bill, occ_map)
+    return render_template("bill_detail.html", bill=bill, shares=shares)
 
 
-# ---------------- Categories (admin only) ----------------
+# ---------------- Categories (admin only; managed from the Bills page) ----------------
 
 
 @bp.route("/categories")
 def categories_list():
     _require_admin()
-    with get_session() as s:
-        categories = s.scalars(select(BillingKind).order_by(BillingKind.name)).all()
-        return render_template("categories.html", categories=categories)
+    return render_template("categories.html", categories=db.categories_all())
 
 
 @bp.route("/categories/new", methods=["POST"])
@@ -491,118 +404,83 @@ def categories_new():
     if not name:
         flash("Category name is required.")
         return redirect(url_for("main.categories_list"))
-    with get_session() as s:
-        existing = s.scalar(select(BillingKind).where(BillingKind.name == name))
-        if existing:
-            flash(f"'{name}' already exists.")
-        else:
-            s.add(BillingKind(name=name))
-            flash(f"Added category '{name}'.")
+    if db.category_by_name(name):
+        flash(f"'{name}' already exists.")
+    else:
+        db.category_create(name)
+        flash(f"Added category '{name}'.")
     return redirect(url_for("main.categories_list"))
 
 
 @bp.route("/categories/<int:cid>/delete", methods=["POST"])
 def categories_delete(cid: int):
     _require_admin()
-    with get_session() as s:
-        category = s.get(BillingKind, cid)
-        if category:
-            s.delete(category)
-            flash(f"Removed category '{category.name}'.")
+    cat = db.category_by_id(cid)
+    if cat:
+        db.category_delete(cid)
+        flash(f"Removed category '{cat.name}'.")
     return redirect(url_for("main.categories_list"))
 
 
 # ---------------- Recurring Bills ----------------
 
 
-def _apply_recurring_bills(s) -> int:
-    """Generate missing Bill instances for all active recurring bills up to today.
-    Returns count of new bills created."""
+def _apply_recurring_bills() -> int:
+    """Generate missing Bill instances for all active recurring templates up to
+    today. Returns count of new bills created."""
     today = date.today()
-    active_rbs = s.scalars(
-        select(RecurringBill).where(RecurringBill.active == True)  # noqa: E712
-    ).all()
-
     created = 0
-    for rb in active_rbs:
-        existing_starts: set[date] = set(
-            s.scalars(select(Bill.start_date).where(Bill.recurring_bill_id == rb.id)).all()
-        )
-        unit_ids = [
-            rbu.unit_id
-            for rbu in s.scalars(
-                select(RecurringBillUnit).where(RecurringBillUnit.recurring_bill_id == rb.id)
-            ).all()
-        ]
+    for rb in db.recurring_all():
+        if not rb.active:
+            continue
+        existing_starts: set[date] = {
+            b.start_date for b in db.bills_all() if b.recurring_bill_id == rb.id
+        }
+        unit_ids = db.recurring_unit_ids(rb.id)
         amount = -rb.amount if rb.is_credit else rb.amount
         for start, end in recurring_instances(rb, today):
             if start in existing_starts:
                 continue
-            bill = Bill(
-                kind=rb.kind,
-                amount=amount,
-                start_date=start,
-                end_date=end,
-                note=rb.note,
-                recurring_bill_id=rb.id,
+            db.bill_create(
+                kind=rb.kind, amount=amount,
+                start_date=start, end_date=end,
+                note=rb.note, recurring_bill_id=rb.id,
+                unit_ids=unit_ids,
             )
-            s.add(bill)
-            s.flush()
-            for uid in unit_ids:
-                s.add(BillUnit(bill_id=bill.id, unit_id=uid))
             existing_starts.add(start)
             created += 1
-
     return created
 
 
-def _recurring_summary_rows(s) -> list[dict]:
-    """Build display rows for all recurring-bill templates (category, schedule,
-    units, status, and how many bills each has generated). Shared by the
-    Recurring page and the Bills page's recurring section."""
-    from sqlalchemy import func
-
-    rbs = s.scalars(
-        select(RecurringBill).order_by(RecurringBill.kind, RecurringBill.id)
-    ).all()
-    rb_units: dict[int, list[str]] = defaultdict(list)
-    for rbu in s.scalars(
-        select(RecurringBillUnit).options(selectinload(RecurringBillUnit.unit))
-    ).all():
-        rb_units[rbu.recurring_bill_id].append(rbu.unit.name)
-
-    count_rows = s.execute(
-        select(Bill.recurring_bill_id, func.count(Bill.id))
-        .where(Bill.recurring_bill_id.is_not(None))
-        .group_by(Bill.recurring_bill_id)
-    ).all()
-    rb_counts: dict[int, int] = {row[0]: row[1] for row in count_rows}
-
+def _recurring_summary_rows() -> list[dict]:
+    """Build display rows for all recurring templates — used by both the
+    Bills-page section and the dedicated Recurring page."""
+    rbs = db.recurring_with_assignments()
+    bills_by_rid: dict[int, int] = defaultdict(int)
+    for b in db.bills_all():
+        if b.recurring_bill_id is not None:
+            bills_by_rid[b.recurring_bill_id] += 1
     rows = []
-    for rb in rbs:
-        cfg = json.loads(rb.recurrence_config or "[]")
+    for rb in sorted(rbs, key=lambda r: (r.kind, r.id)):
+        cfg = db.parse_recurrence_config(rb.recurrence_config)
+        unit_names = sorted({a.unit.name for a in rb.assignments if a.unit})
         rows.append({
             "rb": rb,
             "is_credit": rb.is_credit,
-            "unit_names": sorted(rb_units.get(rb.id, [])),
+            "unit_names": unit_names,
             "config_display": _config_display(rb.recurrence, cfg),
-            "generated_count": rb_counts.get(rb.id, 0),
+            "generated_count": bills_by_rid.get(rb.id, 0),
         })
     return rows
 
 
 @bp.route("/recurring")
 def recurring_list():
-    with get_session() as s:
-        created = _apply_recurring_bills(s)
-        if created:
-            flash(f"Generated {created} new bill{'s' if created != 1 else ''} from recurring templates.")
-
-        rows = _recurring_summary_rows(s)
-        return render_template(
-            "recurring_bills.html",
-            rows=rows,
-        )
+    created = _apply_recurring_bills()
+    if created:
+        flash(f"Generated {created} new bill{'s' if created != 1 else ''} from recurring templates.")
+    rows = _recurring_summary_rows()
+    return render_template("recurring_bills.html", rows=rows)
 
 
 def _config_display(recurrence: str, config: list[int]) -> str:
@@ -625,140 +503,105 @@ def _config_display(recurrence: str, config: list[int]) -> str:
 
 @bp.route("/recurring/new", methods=["GET", "POST"])
 def recurring_new():
-    with get_session() as s:
-        units = s.scalars(select(Unit).order_by(Unit.name)).all()
-        kinds = _kind_names(s)
-        if request.method == "POST":
-            rb = _build_recurring_bill(request.form)
-            s.add(rb)
-            s.flush()
-            for uid in request.form.getlist("unit_ids"):
-                s.add(RecurringBillUnit(recurring_bill_id=rb.id, unit_id=int(uid)))
-            flash(f"Recurring {'credit' if rb.is_credit else 'bill'} added.")
-            return redirect(url_for("main.recurring_list"))
-        is_credit = request.args.get("credit") == "1"
-        return render_template(
-            "recurring_bill_form.html",
-            rb=None,
-            is_credit=is_credit,
-            units=units,
-            kinds=kinds,
-            selected_ids=set(),
-            weekday_names=WEEKDAY_NAMES,
-            month_names=MONTH_NAMES,
-            selected_config=[],
+    units = db.units_all()
+    kinds = db.category_names()
+    if request.method == "POST":
+        unit_ids = [int(x) for x in request.form.getlist("unit_ids")]
+        rb = db.recurring_create(
+            kind=request.form["kind"],
+            amount=float(request.form["amount"]),
+            note=request.form.get("note", "").strip(),
+            recurrence=request.form["recurrence"],
+            recurrence_config=_parse_recurrence_config(request.form),
+            start_date=_parse_date(request.form["start_date"]),
+            end_date=_parse_optional_date(request.form.get("end_date")),
+            active="active" in request.form,
+            is_credit=request.form.get("is_credit") == "1",
+            unit_ids=unit_ids,
         )
+        flash(f"Recurring {'credit' if rb.is_credit else 'bill'} added.")
+        return redirect(url_for("main.recurring_list"))
+    is_credit = request.args.get("credit") == "1"
+    return render_template(
+        "recurring_bill_form.html",
+        rb=None, is_credit=is_credit,
+        units=units, kinds=kinds,
+        selected_ids=set(),
+        weekday_names=WEEKDAY_NAMES, month_names=MONTH_NAMES,
+        selected_config=[],
+    )
 
 
 @bp.route("/recurring/<int:rid>/edit", methods=["GET", "POST"])
 def recurring_edit(rid: int):
-    with get_session() as s:
-        rb = s.get(RecurringBill, rid)
-        if rb is None:
-            return redirect(url_for("main.recurring_list"))
-        units = s.scalars(select(Unit).order_by(Unit.name)).all()
-        kinds = _kind_names(s)
-        if request.method == "POST":
-            rb.kind = request.form["kind"]
-            rb.amount = float(request.form["amount"])
-            rb.note = request.form.get("note", "").strip()
-            rb.recurrence = request.form["recurrence"]
-            rb.recurrence_config = _parse_recurrence_config(request.form)
-            rb.start_date = _parse_date(request.form["start_date"])
-            rb.end_date = _parse_optional_date(request.form.get("end_date"))
-            rb.active = "active" in request.form
-            new_is_credit = request.form.get("is_credit") == "1"
-            # If the credit flag flipped, regenerate signs on already-created bills.
-            if new_is_credit != rb.is_credit:
-                rb.is_credit = new_is_credit
-                signed = -abs(rb.amount) if rb.is_credit else abs(rb.amount)
-                for existing in s.scalars(
-                    select(Bill).where(Bill.recurring_bill_id == rid)
-                ).all():
-                    existing.amount = signed
-            for rbu in list(s.scalars(
-                select(RecurringBillUnit).where(RecurringBillUnit.recurring_bill_id == rid)
-            ).all()):
-                s.delete(rbu)
-            s.flush()
-            for uid in request.form.getlist("unit_ids"):
-                s.add(RecurringBillUnit(recurring_bill_id=rid, unit_id=int(uid)))
-            flash(f"Recurring {'credit' if rb.is_credit else 'bill'} updated.")
-            return redirect(url_for("main.recurring_list"))
-        selected_ids = {
-            rbu.unit_id
-            for rbu in s.scalars(
-                select(RecurringBillUnit).where(RecurringBillUnit.recurring_bill_id == rid)
-            ).all()
-        }
-        selected_config = json.loads(rb.recurrence_config or "[]")
-        return render_template(
-            "recurring_bill_form.html",
-            rb=rb,
-            is_credit=rb.is_credit,
-            units=units,
-            kinds=kinds,
-            selected_ids=selected_ids,
-            weekday_names=WEEKDAY_NAMES,
-            month_names=MONTH_NAMES,
-            selected_config=selected_config,
+    rb = db.recurring_by_id(rid)
+    if rb is None:
+        return redirect(url_for("main.recurring_list"))
+    units = db.units_all()
+    kinds = db.category_names()
+    if request.method == "POST":
+        new_is_credit = request.form.get("is_credit") == "1"
+        unit_ids = [int(x) for x in request.form.getlist("unit_ids")]
+        new_amount = float(request.form["amount"])
+        update_fields = dict(
+            kind=request.form["kind"],
+            amount=new_amount,
+            note=request.form.get("note", "").strip(),
+            recurrence=request.form["recurrence"],
+            recurrence_config=_parse_recurrence_config(request.form),
+            start_date=_parse_date(request.form["start_date"]),
+            end_date=_parse_optional_date(request.form.get("end_date")),
+            active="active" in request.form,
+            is_credit=new_is_credit,
         )
+        db.recurring_update(rid, unit_ids=unit_ids, **update_fields)
+        # If credit flag flipped, re-sign already-generated bills so totals
+        # stay consistent with the new sign.
+        if new_is_credit != rb.is_credit:
+            signed = -abs(new_amount) if new_is_credit else abs(new_amount)
+            for existing in db.bills_all():
+                if existing.recurring_bill_id == rid:
+                    db.bill_update(existing.id, amount=signed)
+        flash(f"Recurring {'credit' if new_is_credit else 'bill'} updated.")
+        return redirect(url_for("main.recurring_list"))
+    selected_ids = set(db.recurring_unit_ids(rid))
+    selected_config = db.parse_recurrence_config(rb.recurrence_config)
+    return render_template(
+        "recurring_bill_form.html",
+        rb=rb, is_credit=rb.is_credit,
+        units=units, kinds=kinds,
+        selected_ids=selected_ids,
+        weekday_names=WEEKDAY_NAMES, month_names=MONTH_NAMES,
+        selected_config=selected_config,
+    )
 
 
 @bp.route("/recurring/<int:rid>/delete", methods=["POST"])
 def recurring_delete(rid: int):
-    with get_session() as s:
-        rb = s.get(RecurringBill, rid)
-        if rb:
-            s.delete(rb)
-            flash("Recurring bill removed.")
+    if db.recurring_by_id(rid):
+        db.recurring_delete(rid)
+        flash("Recurring bill removed.")
     return redirect(url_for("main.recurring_list"))
 
 
 @bp.route("/recurring/<int:rid>/toggle", methods=["POST"])
 def recurring_toggle(rid: int):
-    with get_session() as s:
-        rb = s.get(RecurringBill, rid)
-        if rb:
-            rb.active = not rb.active
-            flash(f"Recurring bill {'activated' if rb.active else 'paused'}.")
+    rb = db.recurring_by_id(rid)
+    if rb:
+        db.recurring_update(rid, active=not rb.active)
+        flash(f"Recurring bill {'paused' if rb.active else 'activated'}.")
     return redirect(url_for("main.recurring_list"))
 
 
-def _parse_recurrence_config(form) -> str:
+def _parse_recurrence_config(form) -> list[int]:
     recurrence = form.get("recurrence", "daily")
     if recurrence == "daily":
-        return "[]"
-    if recurrence == "weekly":
-        values = [int(v) for v in form.getlist("config_weekly") if v.isdigit()]
-        return json.dumps(sorted(values))
-    if recurrence == "monthly":
-        values = [int(v) for v in form.getlist("config_monthly") if v.isdigit()]
-        return json.dumps(sorted(values))
-    if recurrence == "yearly":
-        values = [int(v) for v in form.getlist("config_yearly") if v.isdigit()]
-        return json.dumps(sorted(values))
-    return "[]"
-
-
-def _build_recurring_bill(form) -> RecurringBill:
-    return RecurringBill(
-        kind=form["kind"],
-        amount=float(form["amount"]),
-        note=form.get("note", "").strip(),
-        recurrence=form["recurrence"],
-        recurrence_config=_parse_recurrence_config(form),
-        start_date=_parse_date(form["start_date"]),
-        end_date=_parse_optional_date(form.get("end_date")),
-        active="active" in form,
-        is_credit=form.get("is_credit") == "1",
-    )
-
-
-def _parse_optional_date(value: str | None) -> date | None:
-    if not value or not value.strip():
-        return None
-    return _parse_date(value.strip())
+        return []
+    field_name = {"weekly": "config_weekly", "monthly": "config_monthly",
+                  "yearly": "config_yearly"}.get(recurrence)
+    if not field_name:
+        return []
+    return sorted({int(v) for v in form.getlist(field_name) if v.isdigit()})
 
 
 # ---------------- Users (admin only) ----------------
@@ -767,9 +610,8 @@ def _parse_optional_date(value: str | None) -> date | None:
 @bp.route("/users")
 def users_list():
     _require_admin()
-    with get_session() as s:
-        users = s.scalars(select(AuthorizedUser).order_by(AuthorizedUser.email)).all()
-        return render_template("users.html", users=users, admin_email=admin_email())
+    return render_template("users.html", users=db.authorized_users_all(),
+                            admin_email=admin_email())
 
 
 @bp.route("/users/new", methods=["GET", "POST"])
@@ -777,13 +619,11 @@ def users_new():
     _require_admin()
     if request.method == "POST":
         email = request.form["email"].strip().lower()
-        with get_session() as s:
-            existing = s.scalar(select(AuthorizedUser).where(AuthorizedUser.email == email))
-            if existing:
-                flash(f"{email} is already authorized.")
-            else:
-                s.add(AuthorizedUser(email=email))
-                flash(f"Added {email}.")
+        if db.authorized_user_by_email(email):
+            flash(f"{email} is already authorized.")
+        else:
+            db.authorized_user_create(email)
+            flash(f"Added {email}.")
         return redirect(url_for("main.users_list"))
     return render_template("user_form.html", user=None)
 
@@ -791,34 +631,32 @@ def users_new():
 @bp.route("/users/<int:uid>/edit", methods=["GET", "POST"])
 def users_edit(uid: int):
     _require_admin()
-    with get_session() as s:
-        user = s.get(AuthorizedUser, uid)
-        if user is None:
+    user = db.authorized_user_by_id(uid)
+    if user is None:
+        return redirect(url_for("main.users_list"))
+    if request.method == "POST":
+        new_email = request.form["email"].strip().lower()
+        admin = admin_email()
+        if user.email == admin and new_email != admin:
+            flash("Cannot change the admin's email.")
             return redirect(url_for("main.users_list"))
-        if request.method == "POST":
-            new_email = request.form["email"].strip().lower()
-            admin = admin_email()
-            if user.email == admin and new_email != admin:
-                flash("Cannot change the admin's email.")
-                return redirect(url_for("main.users_list"))
-            user.email = new_email
-            flash("User updated.")
-            return redirect(url_for("main.users_list"))
-        return render_template("user_form.html", user=user)
+        db.authorized_user_update(uid, new_email)
+        flash("User updated.")
+        return redirect(url_for("main.users_list"))
+    return render_template("user_form.html", user=user)
 
 
 @bp.route("/users/<int:uid>/delete", methods=["POST"])
 def users_delete(uid: int):
     _require_admin()
-    with get_session() as s:
-        user = s.get(AuthorizedUser, uid)
-        if user is None:
-            return redirect(url_for("main.users_list"))
-        if user.email == admin_email():
-            flash("Cannot remove the admin.")
-            return redirect(url_for("main.users_list"))
-        s.delete(user)
-        flash(f"Removed {user.email}.")
+    user = db.authorized_user_by_id(uid)
+    if user is None:
+        return redirect(url_for("main.users_list"))
+    if user.email == admin_email():
+        flash("Cannot remove the admin.")
+        return redirect(url_for("main.users_list"))
+    db.authorized_user_delete(uid)
+    flash(f"Removed {user.email}.")
     return redirect(url_for("main.users_list"))
 
 
@@ -827,59 +665,38 @@ def users_delete(uid: int):
 
 @bp.route("/payments/<int:uid>/<int:year>/<int:month>/<kind>", methods=["GET", "POST"])
 def payment_edit(uid: int, year: int, month: int, kind: str):
-    """Create or edit a payment for a (unit, year, month, kind) cell."""
-    with get_session() as s:
-        unit = s.get(Unit, uid)
-        if unit is None:
-            return redirect(url_for("main.dashboard"))
-        payment = s.scalar(
-            select(Payment).where(
-                Payment.unit_id == uid,
-                Payment.year == year,
-                Payment.month == month,
-                Payment.kind == kind,
-            )
-        )
-        if request.method == "POST":
-            amount = float(request.form["amount"])
-            if payment is None:
-                s.add(
-                    Payment(unit_id=uid, year=year, month=month, kind=kind, amount=amount)
-                )
-                flash(f"Recorded ${amount:.2f} payment for {unit.name} ({kind}).")
-            else:
-                payment.amount = amount
-                flash(f"Updated payment for {unit.name} ({kind}).")
-            return redirect(url_for("main.dashboard"))
-        # Owed amount for pre-fill: recompute from bills.
-        owed = _compute_cell_amount(s, uid, year, month, kind)
-        return render_template(
-            "payment_form.html",
-            unit=unit,
-            year=year,
-            month=month,
-            kind=kind,
-            owed=owed,
-            payment=payment,
-        )
+    unit = db.unit_by_id(uid)
+    if unit is None:
+        return redirect(url_for("main.dashboard"))
+    payment = db.payment_lookup(uid, year, month, kind)
+    if request.method == "POST":
+        amount = float(request.form["amount"])
+        db.payment_upsert(uid, year, month, kind, amount)
+        if payment is None:
+            flash(f"Recorded ${amount:.2f} payment for {unit.name} ({kind}).")
+        else:
+            flash(f"Updated payment for {unit.name} ({kind}).")
+        return redirect(url_for("main.dashboard"))
+    owed = _compute_cell_amount(uid, year, month, kind)
+    return render_template(
+        "payment_form.html",
+        unit=unit, year=year, month=month, kind=kind,
+        owed=owed, payment=payment,
+    )
 
 
-def _compute_cell_amount(s, unit_id: int, year: int, month: int, kind: str) -> float:
+def _compute_cell_amount(unit_id: int, year: int, month: int, kind: str) -> float:
     """Recompute what `unit_id` owes for (year, month, kind) from current bills + occupancies."""
-    bills = s.scalars(
-        select(Bill)
-        .where(Bill.kind == kind)
-        .options(selectinload(Bill.assignments).selectinload(BillUnit.unit))
-    ).all()
-    bills = [b for b in bills if bill_due_date(b.end_date).year == year
-             and bill_due_date(b.end_date).month == month]
+    bills = [
+        b for b in db.bills_with_assignments()
+        if b.kind == kind
+        and bill_due_date(b.end_date).year == year
+        and bill_due_date(b.end_date).month == month
+    ]
     if not bills:
         return 0.0
     unit_ids = {a.unit_id for b in bills for a in b.assignments}
-    occ_map: dict[int, list[Occupancy]] = defaultdict(list)
-    if unit_ids:
-        for o in s.scalars(select(Occupancy).where(Occupancy.unit_id.in_(unit_ids))).all():
-            occ_map[o.unit_id].append(o)
+    occ_map = db.occupancies_for_units(unit_ids)
     total = 0.0
     for b in bills:
         for sh in split_bill(b, occ_map):

@@ -3,9 +3,8 @@ from functools import wraps
 
 from authlib.integrations.flask_client import OAuth
 from flask import Blueprint, abort, flash, redirect, render_template, request, session, url_for
-from sqlalchemy import select
 
-from app.db import AuthorizedUser, admin_email, get_session
+from app.db import admin_email, authorized_user_by_email
 
 oauth = OAuth()
 auth_bp = Blueprint("auth", __name__)
@@ -27,8 +26,7 @@ def current_email() -> str | None:
 
 
 def is_authorized(email: str) -> bool:
-    with get_session() as s:
-        return s.scalar(select(AuthorizedUser).where(AuthorizedUser.email == email)) is not None
+    return authorized_user_by_email(email) is not None
 
 
 def is_admin(email: str | None) -> bool:
