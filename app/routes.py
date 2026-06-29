@@ -665,6 +665,7 @@ def recurring_edit(rid: int):
             rb.recurrence = request.form["recurrence"]
             rb.recurrence_config = _parse_recurrence_config(request.form)
             rb.start_date = _parse_date(request.form["start_date"])
+            rb.end_date = _parse_optional_date(request.form.get("end_date"))
             rb.active = "active" in request.form
             new_is_credit = request.form.get("is_credit") == "1"
             # If the credit flag flipped, regenerate signs on already-created bills.
@@ -748,9 +749,16 @@ def _build_recurring_bill(form) -> RecurringBill:
         recurrence=form["recurrence"],
         recurrence_config=_parse_recurrence_config(form),
         start_date=_parse_date(form["start_date"]),
+        end_date=_parse_optional_date(form.get("end_date")),
         active="active" in form,
         is_credit=form.get("is_credit") == "1",
     )
+
+
+def _parse_optional_date(value: str | None) -> date | None:
+    if not value or not value.strip():
+        return None
+    return _parse_date(value.strip())
 
 
 # ---------------- Users (admin only) ----------------

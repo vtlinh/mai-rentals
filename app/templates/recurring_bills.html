@@ -13,7 +13,8 @@
     <th>Amount</th>
     <th>Schedule</th>
     <th>Units</th>
-    <th>Since</th>
+    <th>Starts</th>
+    <th>Ends</th>
     <th>Status</th>
     <th>Generated</th>
     <th></th>
@@ -27,6 +28,7 @@
     <td>{{ row.config_display }}</td>
     <td>{{ row.unit_names | join(', ') or '—' }}</td>
     <td>{{ rb.start_date }}</td>
+    <td>{{ rb.end_date if rb.end_date else '—' }}</td>
     <td>
       {% if rb.active %}
         <span style="color:var(--accent-green);">active</span>
@@ -45,7 +47,7 @@
     </td>
   </tr>
   {% else %}
-  <tr><td colspan="9" class="muted">No recurring bills or credits yet.</td></tr>
+  <tr><td colspan="10" class="muted">No recurring bills or credits yet.</td></tr>
   {% endfor %}
 </table>
 {% endblock %}
