@@ -173,8 +173,39 @@ def units_list():
         return render_template("units.html", units=units)
 
 
-@bp.route("/units/manage")
+@bp.route("/units/manage", methods=["GET", "POST"])
 def units_manage():
+    if request.method == "POST":
+        existing_ids = request.form.getlist("existing_id")
+        existing_names = request.form.getlist("existing_name")
+        new_names = request.form.getlist("new_name")
+        renamed, added = 0, 0
+        with get_session() as s:
+            # Update existing units' names (preserve notes).
+            for sid, raw_name in zip(existing_ids, existing_names):
+                name = raw_name.strip()
+                if not name or not sid.isdigit():
+                    continue
+                unit = s.get(Unit, int(sid))
+                if unit and unit.name != name:
+                    unit.name = name
+                    renamed += 1
+            # Create newly-added units (skip blanks).
+            for raw_name in new_names:
+                name = raw_name.strip()
+                if not name:
+                    continue
+                s.add(Unit(name=name, note=""))
+                added += 1
+        if renamed or added:
+            parts = []
+            if added:
+                parts.append(f"added {added} unit{'s' if added != 1 else ''}")
+            if renamed:
+                parts.append(f"renamed {renamed}")
+            flash("Units: " + ", ".join(parts) + ".")
+        return redirect(url_for("main.units_manage"))
+
     with get_session() as s:
         units = s.scalars(select(Unit).order_by(Unit.name)).all()
         return render_template("manage_units.html", units=units)
