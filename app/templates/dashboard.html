@@ -1,6 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Dashboard{% endblock %}
 {% block body %}
+<p class="actions">
+  <a class="btn" href="{{ url_for('main.pdf_picker') }}">Generate PDF</a>
+</p>
+
 <h1>Outstanding balance</h1>
 {% if outstanding_rows %}
   <table>
