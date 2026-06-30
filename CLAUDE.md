@@ -4,48 +4,71 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Workflow
 
-After completing a feature or fix, commit it, push the branch, open a PR, and merge it to `main` (which auto-deploys via Fly) without asking for approval first.
+After completing a feature or fix, commit it, push the branch, open a PR, and merge it to `main` without asking for approval first. `main` / `/docs` is published by GitHub Pages, so a merge is the deploy.
 
 ## What this app does
 
-Flask web app that tracks how much each rental unit owes the landlord in shared utility bills. A bill covers a date range and is assigned to one or more units; the cost is split across units proportionally to **person-days of occupancy that overlap the bill period** (tenants × overlapping days).
+A **static frontend** (plain ES modules under `docs/`, no build step) that tracks
+how much each rental unit owes in shared utility bills. A bill covers a date
+range and is assigned to one or more units; the cost is split across units
+proportionally to **person-days of occupancy that overlap the bill period**
+(tenants × overlapping days). There is **no backend** — the browser talks
+directly to a **Google Sheet** as its database via the Sheets REST API, using
+the signed-in user's own Google token. A Google account can only read/write if
+the sheet is shared with it.
+
+> History: this was a Flask + SQLite app on Fly.io. That backend has been
+> decommissioned — data migrated into the Google Sheet, Fly app + volume
+> destroyed. Don't reintroduce server-side code.
 
 ## Running
 
 ```
-uv run python run.py     # http://localhost:5000
-uv run pytest -q
+python -m http.server 8000 --directory docs   # http://localhost:8000
 ```
 
-Google OAuth requires three env vars before the server can authenticate anyone:
+`http://localhost:8000` must be an authorized JavaScript origin on the OAuth
+client (Google Cloud Console). There is no test suite and no package manager.
 
-```
-GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, FLASK_SECRET_KEY
-```
+## Architecture (`docs/js/`)
 
-Without them `/login` renders a "missing config" message instead of redirecting to Google. The OAuth redirect URI is `http://localhost:5000/auth/callback`.
-
-## Architecture
-
-- **`app/__init__.py`** — Flask app factory. Calls `init_db()` then `seed_authorized_users()` on every startup, so the allowlist is self-healing. Registers Jinja globals (`bill_due_date`, `current_email`, `is_admin`, `admin_email`) so templates can use them without per-route context.
-- **`app/db.py`** — SQLAlchemy 2.0 models: `Unit`, `Occupancy` (per-unit headcount × date range), `Bill`, `BillUnit` (M2M assignment), `AuthorizedUser`. `ADMIN_EMAIL` is hardcoded; `SEED_EMAILS` defines the initial allowlist. Uses a single SQLite file `rental.db` next to the package. `get_session()` is a contextmanager that **auto-commits on exit** — don't call `session.commit()` inside the `with` block.
-- **`app/billing.py`** — Pure functions, no DB. The split algorithm lives here. **End dates are inclusive** (`_overlap_days` adds `+1`), which the spec example test pins down (2/5–3/4 = 28 days). `bill_due_date(end)` returns the 1st of the following month — due date is never stored, always derived.
-- **`app/auth.py`** — Authlib + Google OIDC. Auth state lives in `flask.session` keyed by `email`. `is_admin(email)` is a simple equality check against `ADMIN_EMAIL`.
-- **`app/routes.py`** — Single blueprint `main`. **Auth is enforced at the blueprint level** via `@bp.before_request`, which redirects to `/login` if the session email isn't on the allowlist. Admin-only routes additionally call `_require_admin()`. The `auth` blueprint is registered separately so its routes bypass this guard.
+- **`config.js`** — `OAUTH_CLIENT_ID`, `SHEET_ID` (both public; the privacy
+  boundary is the Sheet's share list). `TABS` defines the sheet schema: one tab
+  per "table", column order matching the header row. New `window._ensureTabs()`
+  creates any missing tabs from this.
+- **`auth.js`** — Google Identity Services sign-in; holds the access token.
+- **`sheets.js`** — REST client over the Sheets API with TTL-cached `batchGet`.
+  All reads/writes go through here.
+- **`util.js`** — date math, type coercion, DOM helpers, flash messages.
+- **`billing.js`** — pure split / recurring-instance math (no I/O). **End dates
+  are inclusive** (overlap adds `+1`; 2/5–3/4 = 28 days). Due date is the 1st of
+  the month after the bill's end date — always derived, never stored.
+- **`main.js`** — hash router, nav, sign-in shell.
+- **`pages/*.js`** — one module per page, each exporting `mount(container)`.
 
 ## Bill-splitting invariants
 
-When changing the split logic, keep these facts true (the tests in `tests/test_billing.py` will catch regressions):
+Keep these true when changing the split logic in `billing.js`:
 
-- A unit's contribution to a bill is `tenant_count × inclusive overlap days` between each of the unit's occupancies and the bill period, summed.
-- The bill amount is distributed **proportionally to those person-day totals across all assigned units** — the unit-level total person-days is the denominator, not the bill's full date range.
-- Per-unit amounts are rounded to 2 decimals; the sum should reconcile to the bill amount up to rounding (the spec example reconciles exactly).
+- A unit's contribution to a bill is `tenant_count × inclusive overlap days`
+  between each of the unit's occupancies and the bill period, summed.
+- The bill amount is distributed **proportionally to those person-day totals
+  across all assigned units** — the unit-level total person-days is the
+  denominator, not the bill's full date range.
+- Per-unit amounts are rounded to 2 decimals; the sum reconciles to the bill
+  amount up to rounding.
 - If a unit has no overlap, it owes $0 and is hidden on the dashboard.
 
 ## Dashboard rendering
 
-The dashboard groups bills by the month of their derived due date, sorted latest-first, with empty months omitted entirely. Each month shows one combined totals table (rows = units, columns = utility kinds A→Z) and a single A→Z bulleted list of bills due that month. Units with $0 totals are filtered out.
+The dashboard groups bills by the month of their derived due date, sorted
+latest-first, with empty months omitted entirely. Each month shows one combined
+totals table (rows = units, columns = utility kinds A→Z) and a single A→Z
+bulleted list of bills due that month. Units with $0 totals are filtered out.
 
-## Schema changes
+## Sheet schema changes
 
-There are no migrations. `Base.metadata.create_all()` is additive — new tables/columns on existing tables won't be applied. When changing an existing column, delete `rental.db` (it's gitignored) and restart; the seed function will repopulate the allowlist.
+The schema is the `TABS` map in `config.js`. To add a column, append it to the
+right list there **and** add the header cell in the sheet by hand. The frontend
+tolerates missing columns (empty cells). A brand-new sheet is initialized to
+match `TABS` the first time `window._ensureTabs()` runs.
