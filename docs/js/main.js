@@ -19,13 +19,14 @@ import mountCategories from "./pages/categories.js";
 import mountDashboard from "./pages/dashboard.js";
 import mountManageOccupancy from "./pages/manage_occupancy.js";
 import mountManageUnits from "./pages/manage_units.js";
+import mountRecurringForm from "./pages/recurring_form.js";
 import mountUnits from "./pages/units.js";
 
 /**
- * Each route handler takes (container, params). Params is the array of
+ * Each route handler takes (container, params, query). Params is the array of
  * remaining hash segments (e.g. for "#units/42/edit": route="units",
- * params=["42", "edit"]). Routes with sub-segments dispatch inside the
- * mount.
+ * params=["42", "edit"]). Query is a URLSearchParams parsed from any "?…"
+ * suffix on the hash. Routes with sub-segments dispatch inside the mount.
  */
 const ROUTES = {
   "": mountDashboard,
@@ -43,6 +44,15 @@ const ROUTES = {
       return mountBillForm(container, params);
     }
     return mountBills(container);
+  },
+  "recurring": (container, params, query) => {
+    if (params[0] === "new") return mountRecurringForm(container, ["new"], query);
+    if (params.length >= 2 && params[1] === "edit") {
+      return mountRecurringForm(container, params, query);
+    }
+    // No standalone recurring list page — recurring lives on #bills.
+    window.location.hash = "#bills";
+    return Promise.resolve();
   },
   "categories": mountCategories,
 };
@@ -96,12 +106,17 @@ async function render() {
     renderSignInStub(app);
     return;
   }
-  const segments = (window.location.hash || "#dashboard").replace(/^#/, "").split("/");
+  // Split the hash into "<path>?<query>"; path segments are slash-delimited.
+  const rawHash = (window.location.hash || "#dashboard").replace(/^#/, "");
+  const qIndex = rawHash.indexOf("?");
+  const pathPart = qIndex === -1 ? rawHash : rawHash.slice(0, qIndex);
+  const query = new URLSearchParams(qIndex === -1 ? "" : rawHash.slice(qIndex + 1));
+  const segments = pathPart.split("/");
   const route = segments[0] || "dashboard";
   const params = segments.slice(1);
   const mount = ROUTES[route] || ROUTES["dashboard"];
   try {
-    await mount(app, params);
+    await mount(app, params, query);
   } catch (e) {
     if (e instanceof ForbiddenError) {
       renderForbidden(app, e.message);
