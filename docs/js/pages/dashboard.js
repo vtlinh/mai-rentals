@@ -135,6 +135,8 @@ function _render(container, data) {
   ));
   outstandingTable.appendChild(outstandingTbody);
 
+  container.appendChild(h("p", { class: "actions" },
+    h("a", { class: "btn", href: "#pdf" }, "Generate PDF")));
   container.appendChild(outstandingHeader);
   container.appendChild(outstandingTable);
 

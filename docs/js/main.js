@@ -20,6 +20,7 @@ import mountDashboard from "./pages/dashboard.js";
 import mountManageOccupancy from "./pages/manage_occupancy.js";
 import mountManageUnits from "./pages/manage_units.js";
 import mountPaymentForm from "./pages/payment_form.js";
+import mountPdf from "./pages/pdf.js";
 import mountRecurringForm from "./pages/recurring_form.js";
 import mountUnits from "./pages/units.js";
 
@@ -57,6 +58,7 @@ const ROUTES = {
   },
   "categories": mountCategories,
   "payment": (container, params) => mountPaymentForm(container, params),
+  "pdf": mountPdf,
 };
 
 async function boot() {
