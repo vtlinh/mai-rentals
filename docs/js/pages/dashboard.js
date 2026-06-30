@@ -194,7 +194,13 @@ function _render(container, data) {
         const cell = h("td", { class: "right" });
         if (owed) {
           cell.appendChild(document.createTextNode(fmtMoney(owed)));
-          // Pay/edit link will come back when we add the payment-edit page in a follow-up.
+          if (u) {
+            cell.appendChild(document.createTextNode(" "));
+            cell.appendChild(h("a", {
+              class: "btn-secondary btn-sm",
+              href: `#payment/${u.id}/${m.year}/${m.month}/${encodeURIComponent(k)}`,
+            }, payment ? "edit" : "pay"));
+          }
           cell.appendChild(h("br"));
           if (remaining <= 0) {
             cell.appendChild(h("span",
