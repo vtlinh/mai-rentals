@@ -17,8 +17,8 @@
  *      (Editor for write, Viewer for read-only).
  *   5. Fill in the two strings below and commit.
  */
-export const OAUTH_CLIENT_ID = ""; // e.g. "1234-abc.apps.googleusercontent.com"
-export const SHEET_ID = "";        // long string from the sheet URL
+export const OAUTH_CLIENT_ID = "248940613032-ot4a9a6mktg8flg6kn95coqvn9do3lj3.apps.googleusercontent.com";
+export const SHEET_ID = "1mOdFEWetY0uKC6G_qgUxIBB9MGshnVIhxLP7EOMS3NU";
 
 /**
  * Sheet schema — one tab per "table", column order matches the header row.
