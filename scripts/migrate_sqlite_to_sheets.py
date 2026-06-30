@@ -40,18 +40,15 @@ TABS: dict[str, list[str]] = {
 }
 
 
-def main(sqlite_path: str) -> None:
-    sheet_id = os.environ.get("GOOGLE_SHEETS_ID")
-    creds_json = os.environ.get("GOOGLE_SHEETS_CREDENTIALS_JSON")
-    if not sheet_id:
-        raise SystemExit("GOOGLE_SHEETS_ID env var is required")
-    if not creds_json:
-        raise SystemExit("GOOGLE_SHEETS_CREDENTIALS_JSON env var is required")
+def migrate(sh, sqlite_path: str) -> None:
+    """Copy a SQLite rental.db into the already-opened spreadsheet `sh`.
+
+    `sh` is a gspread Spreadsheet, opened however the caller authenticated
+    (service account or interactive user OAuth). Safe to re-run: every tab is
+    cleared and its header re-written before import.
+    """
     if not Path(sqlite_path).exists():
         raise SystemExit(f"sqlite file not found: {sqlite_path}")
-
-    gc = gspread.service_account_from_dict(json.loads(creds_json))
-    sh = gc.open_by_key(sheet_id)
 
     # Ensure each tab exists with the right header row.
     existing_titles = {ws.title for ws in sh.worksheets()}
@@ -172,6 +169,19 @@ def main(sqlite_path: str) -> None:
         _append("categories", rows)
 
     print("done.")
+
+
+def main(sqlite_path: str) -> None:
+    """Service-account entry point (CI / headless). Reads creds from env."""
+    sheet_id = os.environ.get("GOOGLE_SHEETS_ID")
+    creds_json = os.environ.get("GOOGLE_SHEETS_CREDENTIALS_JSON")
+    if not sheet_id:
+        raise SystemExit("GOOGLE_SHEETS_ID env var is required")
+    if not creds_json:
+        raise SystemExit("GOOGLE_SHEETS_CREDENTIALS_JSON env var is required")
+    gc = gspread.service_account_from_dict(json.loads(creds_json))
+    sh = gc.open_by_key(sheet_id)
+    migrate(sh, sqlite_path)
 
 
 if __name__ == "__main__":
