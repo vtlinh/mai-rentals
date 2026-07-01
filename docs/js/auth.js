@@ -1,23 +1,30 @@
 /**
  * Google Identity Services (GIS) sign-in.
  *
- * Token model: the access token is held only in memory (never persisted — it's
- * a short-lived secret). To spare the user from clicking "Sign in" every visit,
- * we do **silent re-authentication**: on load, if they've signed in before, we
- * quietly request a token using their existing Google session + prior consent
- * (no popup). The token is also auto-refreshed shortly before it expires.
+ * Staying signed in across reloads, in order of preference:
+ *  1. Cached access token — the (short-lived, ~1h) token is stored in
+ *     localStorage and restored on load, so a reload within its lifetime needs
+ *     zero Google interaction. This is the reliable path: it works even when
+ *     third-party-cookie policies (Safari, Chrome) block the silent handshake.
+ *  2. Silent re-auth — once the cached token expires, we try a no-popup token
+ *     request (prompt:none) using the existing Google session + prior consent.
+ *     Best-effort; frequently blocked by cookie policy.
+ *  3. Interactive — falls back to the "Sign in" button (consent screen only for
+ *     first-time users).
  *
- * The only thing persisted is a boolean flag in localStorage marking that the
- * user has consented before — never the token. A true "remember forever"
- * refresh token isn't possible in a pure static site (no backend to hold it),
- * so silent re-auth is the seamless-but-secure best option: the user only has
- * to re-consent if they sign out of Google, clear cookies, or revoke access.
+ * A true "remember forever" refresh token isn't possible in a pure static site
+ * (Google only issues those to confidential clients with a backend), so the
+ * short-lived token is the strongest credential available to persist. It's a
+ * ~1h secret in localStorage — acceptable for this personal, sheet-share-gated
+ * app — and is cleared on sign-out. The user re-consents only if they sign out
+ * of Google, clear site data, or revoke access.
  */
 import { OAUTH_CLIENT_ID } from "./config.js";
 
 const SCOPE = "https://www.googleapis.com/auth/spreadsheets " +
               "https://www.googleapis.com/auth/userinfo.email";
 const PREV_SIGNIN_KEY = "rental_prev_signin";
+const TOKEN_KEY = "rental_token";              // cached access token (short-lived)
 const REFRESH_LEAD_MS = 2 * 60 * 1000; // refresh ~2 min before expiry
 
 let tokenClient = null;
@@ -39,6 +46,10 @@ export async function initAuth() {
       "instructions in that file."
     );
   }
+  // Restore a still-valid cached token first, so a refresh within the token's
+  // ~1h lifetime needs no Google round-trip at all (this is what makes reloads
+  // instant even when third-party-cookie policies block silent re-auth).
+  restoreSession();
   await loadGisScript();
   tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: OAUTH_CLIENT_ID,
@@ -51,9 +62,11 @@ export async function initAuth() {
       accessToken = resp.access_token;
       accessTokenExpiresAt = Date.now() + (resp.expires_in || 3600) * 1000;
       try { localStorage.setItem(PREV_SIGNIN_KEY, "1"); } catch (_) { /* ignore */ }
+      _persistToken();
       _scheduleRefresh();
       // Fetch the user's email for the nav badge (best-effort), then notify.
       fetchUserEmail().finally(() => {
+        _persistToken(); // re-store now that we have the email
         _settlePending({ ok: true });
         signInListeners.forEach((cb) => cb());
       });
@@ -71,6 +84,47 @@ function _settlePending(result) {
     const r = pendingResolve;
     pendingResolve = null;
     r(result);
+  }
+}
+
+/**
+ * Cache the current (short-lived) access token so a page reload within its
+ * lifetime restores the session with no Google interaction. This stores a
+ * ~1-hour secret in localStorage — acceptable for this personal, sheet-gated
+ * app; the exposure window is one token lifetime and it's cleared on sign-out.
+ */
+function _persistToken() {
+  try {
+    if (!accessToken) return;
+    localStorage.setItem(TOKEN_KEY, JSON.stringify({
+      access_token: accessToken,
+      expires_at: accessTokenExpiresAt,
+      email: userEmail,
+    }));
+  } catch (_) { /* ignore */ }
+}
+
+/**
+ * Load a cached token into memory if present and not near expiry. Returns true
+ * if a usable session was restored. Called synchronously during initAuth.
+ */
+export function restoreSession() {
+  try {
+    const raw = localStorage.getItem(TOKEN_KEY);
+    if (!raw) return false;
+    const t = JSON.parse(raw);
+    if (!t.access_token || !t.expires_at) return false;
+    if (Date.now() > t.expires_at - 60_000) {   // expired / about to expire
+      localStorage.removeItem(TOKEN_KEY);
+      return false;
+    }
+    accessToken = t.access_token;
+    accessTokenExpiresAt = t.expires_at;
+    userEmail = t.email || null;
+    _scheduleRefresh();
+    return true;
+  } catch (_) {
+    return false;
   }
 }
 
@@ -158,7 +212,10 @@ export function signOut() {
   accessTokenExpiresAt = 0;
   userEmail = null;
   if (refreshTimer) { clearTimeout(refreshTimer); refreshTimer = null; }
-  try { localStorage.removeItem(PREV_SIGNIN_KEY); } catch (_) { /* ignore */ }
+  try {
+    localStorage.removeItem(PREV_SIGNIN_KEY);
+    localStorage.removeItem(TOKEN_KEY);
+  } catch (_) { /* ignore */ }
   signInListeners.forEach((cb) => cb());
 }
 

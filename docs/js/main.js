@@ -68,26 +68,33 @@ async function boot() {
     return;
   }
   try {
+    // initAuth() restores a cached, still-valid token synchronously, so
+    // isSignedIn() may already be true here after a recent sign-in.
     await initAuth();
   } catch (e) {
     renderError(e.message);
     return;
   }
+  window.addEventListener("hashchange", render);
+
+  // If not already restored from cache but the user has signed in before, try a
+  // no-popup silent re-auth (best effort — often blocked by third-party-cookie
+  // policies, which is exactly why the cached-token path above matters most).
+  if (!isSignedIn() && hasSignedInBefore()) {
+    renderNav();
+    renderSigningIn(document.getElementById("app"));
+    await trySilentSignIn();
+  }
+
+  // Register the reactive handler AFTER the boot attempt so it only drives
+  // later Sign in / Log out clicks — not this initial paint (avoids a double
+  // render when silent sign-in resolves).
   onAuthChange(() => {
     renderNav();
     render();
   });
-  window.addEventListener("hashchange", render);
-
-  // If the user has signed in before, try to restore the session silently
-  // (no popup) before painting the sign-in stub, so returning visits skip the
-  // "Sign in" click entirely.
   renderNav();
-  if (!isSignedIn() && hasSignedInBefore()) {
-    renderSigningIn(document.getElementById("app"));
-    await trySilentSignIn();  // onAuthChange re-renders on success
-  }
-  if (!isSignedIn()) render();
+  render();
 }
 
 function renderSigningIn(app) {
