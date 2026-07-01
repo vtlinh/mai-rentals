@@ -122,9 +122,15 @@ function _render(container, data) {
     byMonth.get(key).bills.push(b);
   }
 
-  const months = [...byMonth.values()].sort((a, b) =>
-    (b.year - a.year) || (b.month - a.month)
-  );
+  // Don't surface amounts owed for months that haven't arrived yet. A bill
+  // billed "at end" of, say, July is due Aug 1 — but while it's still July we
+  // shouldn't show (or count toward outstanding) an August balance. Keep only
+  // due months up to and including the current one.
+  const t = today();
+  const curY = t.getUTCFullYear(), curM = t.getUTCMonth() + 1;
+  const months = [...byMonth.values()]
+    .filter((m) => m.year < curY || (m.year === curY && m.month <= curM))
+    .sort((a, b) => (b.year - a.year) || (b.month - a.month));
 
   // Outstanding balance section ------------------------------------
   // (We compute it as a side-effect of rendering each month, so render months first.)
