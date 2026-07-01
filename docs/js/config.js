@@ -30,11 +30,13 @@ export const SHEET_ID = "1mOdFEWetY0uKC6G_qgUxIBB9MGshnVIhxLP7EOMS3NU";
 export const TABS = {
   units: ["id", "name", "note"],
   occupancies: ["id", "unit_id", "tenant_count", "start_date", "end_date"],
-  bills: ["id", "kind", "amount", "start_date", "end_date", "note", "recurring_bill_id"],
+  // due_date is optional: empty → derived as the 1st of the month after end_date.
+  bills: ["id", "kind", "amount", "start_date", "end_date", "note", "recurring_bill_id", "due_date"],
   bill_units: ["id", "bill_id", "unit_id"],
+  // bill_timing: "end" (default; due the following month) | "start" (due within the period).
   recurring_bills: [
     "id", "kind", "amount", "note", "recurrence", "recurrence_config",
-    "start_date", "end_date", "active", "is_credit",
+    "start_date", "end_date", "active", "is_credit", "bill_timing",
   ],
   recurring_bill_units: ["id", "recurring_bill_id", "unit_id"],
   payments: ["id", "unit_id", "year", "month", "kind", "amount"],

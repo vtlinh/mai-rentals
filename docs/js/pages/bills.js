@@ -7,7 +7,7 @@
  */
 import { readAll } from "../sheets.js";
 import {
-  asBool, asFloat, asInt, asOptInt, billDueDate, clear, fmtMoney, h,
+  asBool, asFloat, asInt, asOptInt, clear, effectiveDueDate, fmtMoney, h,
   MONTH_NAMES, parseDate, parseRecurrenceConfig, WEEKDAY_NAMES,
 } from "../util.js";
 
@@ -71,6 +71,9 @@ function _renderRecurring(container, data) {
       scheduleCell.appendChild(h("span", { class: "muted" },
         ` until ${rb.end_date.toISOString().slice(0, 10)}`));
     }
+    if (rb.bill_timing === "start") {
+      scheduleCell.appendChild(h("span", { class: "muted" }, " · billed at start"));
+    }
     tbl.appendChild(h("tr", null,
       h("td", null, rb.is_credit
         ? h("span", { style: { color: "var(--accent-green)" } }, "credit")
@@ -128,7 +131,7 @@ function _renderOneOff(container, data) {
 
   bills.sort((a, b) => b.end_date - a.end_date);
   for (const b of bills) {
-    const due = billDueDate(b.end_date).toISOString().slice(0, 10);
+    const due = effectiveDueDate(b).toISOString().slice(0, 10);
     tbl.appendChild(h("tr", null,
       h("td", null, b.kind),
       h("td", null,
@@ -163,6 +166,7 @@ function _parseRecurring(r) {
     end_date: r.end_date ? parseDate(r.end_date) : null,
     active: asBool(r.active, true),
     is_credit: asBool(r.is_credit, false),
+    bill_timing: (r.bill_timing || "end").trim() || "end",
   };
 }
 
@@ -175,6 +179,7 @@ function _parseBill(r) {
     end_date: parseDate(r.end_date),
     note: r.note || "",
     recurring_bill_id: asOptInt(r.recurring_bill_id),
+    due_date: r.due_date || "",
   };
 }
 
