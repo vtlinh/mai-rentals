@@ -5,9 +5,9 @@
  * "edit" link per row; delete moves to inside the bill edit form (matching
  * the Flask app's pattern).
  */
-import { readAll } from "../sheets.js";
+import { deleteRow, invalidate, readAll, updateRow } from "../sheets.js";
 import {
-  asBool, asFloat, asInt, asOptInt, clear, effectiveDueDate, fmtMoney, h,
+  asBool, asFloat, asInt, asOptInt, clear, effectiveDueDate, flash, fmtMoney, h,
   MONTH_NAMES, parseDate, parseRecurrenceConfig, WEEKDAY_NAMES,
 } from "../util.js";
 
@@ -61,6 +61,7 @@ function _renderRecurring(container, data) {
     h("th", null, "Units"),
     h("th", null, "Status"),
     h("th", null, "Generated"),
+    h("th", null, ""),
   ));
   rbs.sort((a, b) => a.kind.localeCompare(b.kind) || a.id - b.id);
   for (const rb of rbs) {
@@ -74,6 +75,33 @@ function _renderRecurring(container, data) {
     if (rb.bill_timing === "start") {
       scheduleCell.appendChild(h("span", { class: "muted" }, " · billed at start"));
     }
+    const kindWord = rb.is_credit ? "credit" : "bill";
+    const actions = h("span", { class: "actions" },
+      h("a", { class: "btn-secondary btn-sm", href: `#recurring/${rb.id}/edit` }, "edit"),
+      h("button", {
+        class: "btn-secondary btn-sm", type: "button",
+        onclick: async () => {
+          try {
+            await updateRow("recurring_bills", rb.id, { active: !rb.active });
+            invalidate("recurring_bills");
+            flash(`Recurring ${kindWord} ${rb.active ? "paused" : "activated"}.`);
+            await mountBills(container);
+          } catch (e) { flash(`Failed: ${e.message}`, "err"); }
+        },
+      }, rb.active ? "pause" : "resume"),
+      h("button", {
+        class: "btn-danger btn-sm", type: "button",
+        onclick: async () => {
+          if (!confirm(`Delete this recurring ${kindWord} and all its generated ` +
+                       `entries? This cannot be undone.`)) return;
+          try {
+            await _deleteRecurringCascade(rb.id, data);
+            flash(`Recurring ${kindWord} removed.`);
+            await mountBills(container);
+          } catch (e) { flash(`Delete failed: ${e.message}`, "err"); }
+        },
+      }, "delete"),
+    );
     tbl.appendChild(h("tr", null,
       h("td", null, rb.is_credit
         ? h("span", { style: { color: "var(--accent-green)" } }, "credit")
@@ -87,11 +115,12 @@ function _renderRecurring(container, data) {
         ? h("span", { style: { color: "var(--accent-green)" } }, "active")
         : h("span", { class: "muted" }, "paused")),
       h("td", null, String(generated.get(rb.id) || 0)),
+      h("td", null, actions),
     ));
   }
   if (!rbs.length) {
     tbl.appendChild(h("tr", null,
-      h("td", { class: "muted", colspan: "7" },
+      h("td", { class: "muted", colspan: "8" },
         "No recurring bills or credits yet."),
     ));
   }
@@ -181,6 +210,36 @@ function _parseBill(r) {
     recurring_bill_id: asOptInt(r.recurring_bill_id),
     due_date: r.due_date || "",
   };
+}
+
+/**
+ * Delete a recurring template and everything it spawned: its generated bills,
+ * those bills' unit assignments, and its own unit assignments. Runs deletes
+ * sequentially to stay under per-user Sheets batchUpdate rate limits.
+ */
+async function _deleteRecurringCascade(rid, data) {
+  const tasks = [];
+  for (const b of (data.bills || [])) {
+    if (asOptInt(b.recurring_bill_id) === rid) {
+      const bid = asInt(b.id);
+      for (const bu of (data.bill_units || [])) {
+        if (asInt(bu.bill_id) === bid) {
+          const buId = asInt(bu.id);
+          tasks.push(() => deleteRow("bill_units", buId));
+        }
+      }
+      tasks.push(() => deleteRow("bills", bid));
+    }
+  }
+  for (const r of (data.recurring_bill_units || [])) {
+    if (asInt(r.recurring_bill_id) === rid) {
+      const rowId = asInt(r.id);
+      tasks.push(() => deleteRow("recurring_bill_units", rowId));
+    }
+  }
+  for (const t of tasks) await t();
+  await deleteRow("recurring_bills", rid);
+  invalidate();
 }
 
 function _configDisplay(recurrence, config) {
