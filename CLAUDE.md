@@ -50,13 +50,21 @@ client (Google Cloud Console). There is no test suite and no package manager.
 
 Keep these true when changing the split logic in `billing.js`:
 
-- A unit's contribution to a bill is `tenant_count × inclusive overlap days`
-  between each of the unit's occupancies and the bill period, summed.
-- The bill amount is distributed **proportionally to those person-day totals
-  across all assigned units** — the unit-level total person-days is the
-  denominator, not the bill's full date range.
-- Per-unit amounts are rounded to 2 decimals; the sum reconciles to the bill
-  amount up to rounding.
+- A unit's **actual** person-days for a bill is `tenant_count × inclusive
+  overlap days` between each of the unit's occupancies and the bill period,
+  summed.
+- Charges are **pro-rated against the full bill period**. The denominator is
+  the **full-occupancy reference** person-days = Σ over assigned units of
+  `(unit's peak tenant_count over the period × full bill-period length)`. Each
+  unit owes `amount × actual_person_days / reference_total`.
+- Consequence: a tenant present for only part of the period pays only that
+  fraction (mid-month move-in/out → pro-rated), and the vacant remainder is
+  **not** billed — it is neither charged to that unit nor redistributed to the
+  other assigned units. The landlord absorbs vacancy.
+- When every assigned unit occupies the entire bill period, reference ==
+  actual, so the full amount is recovered and it reduces to a plain
+  person-day split.
+- Per-unit amounts are rounded to 2 decimals.
 - If a unit has no overlap, it owes $0 and is hidden on the dashboard.
 
 ## Dashboard rendering

@@ -1,14 +1,19 @@
 /**
- * Bill-splitting + recurring-bill generation. Port of app/billing.py.
+ * Bill-splitting + recurring-bill generation.
  *
- * Invariants (also pinned in tests/test_billing.py on the Python side):
- *   • A unit's contribution to a bill = sum over the unit's occupancies of
+ * Splitting is **pro-rated against the full bill period**:
+ *   • A unit's actual contribution = Σ over its occupancies of
  *     (tenant_count × inclusive overlap days with the bill period).
- *   • Bill amount is split across assigned units proportionally to their
- *     person-days; total person-days is the denominator (NOT the bill's
- *     full date range).
- *   • Per-unit amounts are rounded to 2 decimals; sum reconciles to the bill
- *     amount up to rounding.
+ *   • Each unit is charged at a fixed per-person-day rate =
+ *     bill.amount / (full-occupancy person-days), where full-occupancy
+ *     person-days = Σ over assigned units of (the unit's tenant_count ×
+ *     the full bill-period length). So a tenant present for only half the
+ *     period pays half; the vacant remainder is simply NOT billed (it is
+ *     not redistributed to the other units).
+ *   • When every assigned unit occupies the entire bill period, the
+ *     reference equals the actual person-days, so the full amount is
+ *     recovered and the split reduces to plain person-day proportions.
+ *   • Per-unit amounts are rounded to 2 decimals.
  *   • A unit with no overlap owes $0 and is filtered out on the dashboard.
  */
 import {
@@ -26,8 +31,31 @@ export function unitPersonDays(occupancies, bill) {
   return total;
 }
 
+/** Inclusive length of the bill's period in days. */
+function billPeriodDays(bill) {
+  return Math.round((bill.end_date - bill.start_date) / 86400000) + 1;
+}
+
 /**
- * Split a bill across its assigned units.
+ * A unit's full-occupancy reference person-days for a bill: the tenant count
+ * it would have (its peak headcount among occupancies overlapping the bill)
+ * times the full bill-period length. This is the denominator basis so that
+ * partial occupancy is pro-rated rather than absorbing the whole bill.
+ */
+function unitReferencePersonDays(occupancies, bill) {
+  let repTenants = 0;
+  for (const o of occupancies) {
+    const start = o.start_date instanceof Date ? o.start_date : parseDate(o.start_date);
+    const end = o.end_date instanceof Date ? o.end_date : parseDate(o.end_date);
+    if (overlapDays(start, end, bill.start_date, bill.end_date) > 0) {
+      repTenants = Math.max(repTenants, o.tenant_count || 0);
+    }
+  }
+  return repTenants * billPeriodDays(bill);
+}
+
+/**
+ * Split a bill across its assigned units, pro-rated against the full period.
  *   bill: { amount, start_date (Date), end_date (Date),
  *           assignments: [{ unit_id, unit: { id, name } }, …] }
  *   occMap: { unit_id → [occupancy, …] }
@@ -35,16 +63,18 @@ export function unitPersonDays(occupancies, bill) {
  */
 export function splitBill(bill, occMap) {
   const pdByUnit = new Map();
+  const refByUnit = new Map();
   for (const a of bill.assignments) {
     const occs = occMap[a.unit_id] || [];
     pdByUnit.set(a.unit_id, unitPersonDays(occs, bill));
+    refByUnit.set(a.unit_id, unitReferencePersonDays(occs, bill));
   }
-  let total = 0;
-  for (const v of pdByUnit.values()) total += v;
+  let referenceTotal = 0;
+  for (const v of refByUnit.values()) referenceTotal += v;
   const shares = [];
   for (const a of bill.assignments) {
     const pd = pdByUnit.get(a.unit_id) || 0;
-    const amount = total > 0 ? (pd / total) * bill.amount : 0;
+    const amount = referenceTotal > 0 ? (pd / referenceTotal) * bill.amount : 0;
     shares.push({
       unit_id: a.unit_id,
       unit_name: a.unit ? a.unit.name : "",

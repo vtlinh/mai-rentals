@@ -63,18 +63,33 @@ sign in normally. No build step, no dependencies.
 
 ## How the split works
 
+Charges are **pro-rated against the full bill period**, so partial occupancy
+(a mid-month move-in or move-out) is charged proportionally.
+
 For each bill assigned to a set of units:
 
-1. For every unit, compute its **person-days** = sum over the unit's occupancies
-   of `tenant_count × (inclusive days overlapping the bill period)`.
-2. Total person-days = sum across all assigned units.
-3. Each unit owes `bill.amount × unit_person_days / total_person_days`.
+1. For every unit, compute its **actual person-days** = sum over the unit's
+   occupancies of `tenant_count × (inclusive days overlapping the bill period)`.
+2. Compute the **full-occupancy reference** = sum over assigned units of
+   `(unit's tenant_count × the full bill-period length in days)`.
+3. Each unit owes `bill.amount × actual_person_days / reference`.
 
-Example: a $100 bill for Feb 5 – Mar 4 shared between Unit 1 (3 tenants, Feb 1 –
-May 31) and Unit 2 (5 tenants, Feb 15 – May 31):
+Because the denominator is the *full-period* reference (not the sum of actual
+person-days), a unit that was only occupied part of the period pays only that
+fraction, and the vacant remainder is simply not billed (it is not shifted onto
+the other units).
 
-- Unit 1: 28 overlap days × 3 tenants = **84 person-days** → $48.28
-- Unit 2: 18 overlap days × 5 tenants = **90 person-days** → $51.72
+**Example — pro-rating:** a $100 bill for a 30-day month, assigned to one unit
+with 2 tenants who move in on the 16th (occupies 15 of 30 days):
 
-The bill is then surfaced in the **April** column of the dashboard (due date =
-1st of the month after Mar 4). End dates are **inclusive**.
+- actual person-days = 2 × 15 = **30**
+- reference = 2 tenants × 30 days = **60**
+- owes `100 × 30 / 60` = **$50** (the other $50 is unbilled vacancy)
+
+**Example — full occupancy** (reduces to a plain person-day split): a $100 bill
+for a month shared between Unit 1 (2 tenants, whole month) and Unit 2 (3 tenants,
+whole month) → reference = 2×30 + 3×30 = 150; Unit 1 owes `100 × 60/150` = **$40**,
+Unit 2 owes `100 × 90/150` = **$60**, fully recovered.
+
+Bills are surfaced on the dashboard in the month of their **due date** = the 1st
+of the month after the bill's end date. End dates are **inclusive**.
