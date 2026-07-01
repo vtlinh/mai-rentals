@@ -8,6 +8,7 @@
  */
 import {
   initAuth, signIn, signOut, isSignedIn, getUserEmail, onAuthChange,
+  trySilentSignIn, hasSignedInBefore,
 } from "./auth.js";
 import { OAUTH_CLIENT_ID, SHEET_ID } from "./config.js";
 import { ForbiddenError, ensureTabs } from "./sheets.js";
@@ -72,13 +73,26 @@ async function boot() {
     renderError(e.message);
     return;
   }
-  renderNav();
   onAuthChange(() => {
     renderNav();
     render();
   });
   window.addEventListener("hashchange", render);
-  render();
+
+  // If the user has signed in before, try to restore the session silently
+  // (no popup) before painting the sign-in stub, so returning visits skip the
+  // "Sign in" click entirely.
+  renderNav();
+  if (!isSignedIn() && hasSignedInBefore()) {
+    renderSigningIn(document.getElementById("app"));
+    await trySilentSignIn();  // onAuthChange re-renders on success
+  }
+  if (!isSignedIn()) render();
+}
+
+function renderSigningIn(app) {
+  clear(app);
+  app.appendChild(h("p", { class: "muted" }, "Signing in…"));
 }
 
 function renderNav() {
