@@ -91,12 +91,27 @@ export function overlapDays(a1, a2, b1, b2) {
   return Math.round((end - start) / 86400000) + 1;
 }
 
-/** First of the month after `endDate` (matches bill_due_date in billing.py). */
+/** First of the month after `endDate` — the default "bill at end" due date. */
 export function billDueDate(endDate) {
   const y = endDate.getUTCFullYear();
   const m = endDate.getUTCMonth(); // 0-based
   if (m === 11) return new Date(Date.UTC(y + 1, 0, 1));
   return new Date(Date.UTC(y, m + 1, 1));
+}
+
+/**
+ * The due date a bill is grouped under on the dashboard. If the bill carries an
+ * explicit `due_date` (recurring templates that bill at the start of the period
+ * stamp this, and it can be hand-set in the sheet), use it; otherwise derive the
+ * default "1st of the month after the period ends".
+ */
+export function effectiveDueDate(bill) {
+  const raw = bill.due_date;
+  if (raw) {
+    const d = raw instanceof Date ? raw : parseDate(raw);
+    if (d) return d;
+  }
+  return billDueDate(bill.end_date);
 }
 
 /** Last day of (year, month) — month is 1-based here. */

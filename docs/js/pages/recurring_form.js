@@ -53,6 +53,7 @@ export default async function mountRecurringForm(container, params, query) {
       end_date: raw.end_date ? parseDate(raw.end_date) : null,
       active: asBool(raw.active, true),
       is_credit: asBool(raw.is_credit, false),
+      bill_timing: (raw.bill_timing || "end").trim() || "end",
     };
     isCredit = rb.is_credit;
     for (const r of (data.recurring_bill_units || [])) {
@@ -105,6 +106,18 @@ export default async function mountRecurringForm(container, params, query) {
   form.appendChild(h("p", { class: "muted" },
     "Entries are generated from the start date forward up to today (and never " +
     "past the end date, if set) each time the Bills page is visited."));
+
+  // ---- Bill timing ----
+  const timingSelect = h("select", { name: "bill_timing" },
+    h("option", { value: "end" }, "End of period — due the following month"),
+    h("option", { value: "start" }, "Start of period — due within the period"),
+  );
+  timingSelect.value = (rb && rb.bill_timing === "start") ? "start" : "end";
+  form.appendChild(h("label", null, "When to bill", timingSelect));
+  form.appendChild(h("p", { class: "muted" },
+    "“End” bills the period on the 1st of the following month (e.g. an " +
+    "April period shows on May’s dashboard). “Start” bills it within the " +
+    "period itself (an April period shows on April’s dashboard)."));
 
   // ---- Recurrence ----
   const recurrence = rb ? rb.recurrence : "monthly";
@@ -214,6 +227,7 @@ export default async function mountRecurringForm(container, params, query) {
       const checkedUids = [...form.querySelectorAll("input[name='unit_ids']:checked")]
         .map((cb) => parseInt(cb.value, 10));
       const amount = parseFloat(amountInput.value);
+      const billTiming = timingSelect.value === "start" ? "start" : "end";
       const payload = {
         kind: kindSelect.value,
         amount,
@@ -224,6 +238,7 @@ export default async function mountRecurringForm(container, params, query) {
         end_date: endInput.value || "",
         active: activeCb.checked,
         is_credit: isCredit,
+        bill_timing: billTiming,
       };
 
       if (isEdit) {
@@ -246,6 +261,16 @@ export default async function mountRecurringForm(container, params, query) {
           for (const b of (fresh2.bills || [])) {
             if (asOptInt(b.recurring_bill_id) === rid) {
               await updateRow("bills", asInt(b.id), { amount: signed });
+            }
+          }
+        }
+        // Re-stamp generated bills' due dates if the timing changed, so the
+        // dashboard month they land in follows the new setting.
+        if (billTiming !== rb.bill_timing) {
+          for (const b of (fresh2.bills || [])) {
+            if (asOptInt(b.recurring_bill_id) === rid) {
+              const due = billTiming === "start" ? (b.start_date || "") : "";
+              await updateRow("bills", asInt(b.id), { due_date: due });
             }
           }
         }

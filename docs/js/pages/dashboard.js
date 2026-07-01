@@ -10,7 +10,7 @@ import {
   appendRow, readAll, invalidate, nextId,
 } from "../sheets.js";
 import {
-  asBool, asFloat, asInt, asOptInt, billDueDate, clear, fmtMoney, h,
+  asBool, asFloat, asInt, asOptInt, clear, effectiveDueDate, fmtMoney, h,
   MONTH_NAMES, parseDate, today,
 } from "../util.js";
 
@@ -51,15 +51,19 @@ async function _applyRecurring(data) {
       const key = start.toISOString().slice(0, 10);
       if (existingStarts.has(key)) continue;
       const newBillId = nextId(data.bills);
+      // "start" timing → the bill is due within its own period (stamp the
+      // period start as the due date); "end" (default) → leave blank so it
+      // derives to the 1st of the following month.
+      const dueDate = rb.bill_timing === "start" ? key : "";
       data.bills.push({
         id: String(newBillId), kind: rb.kind, amount: String(amount),
         start_date: key, end_date: end.toISOString().slice(0, 10),
-        note: rb.note || "", recurring_bill_id: String(rb.id),
+        note: rb.note || "", recurring_bill_id: String(rb.id), due_date: dueDate,
       });
       writes.push({ tab: "bills", row: {
         id: newBillId, kind: rb.kind, amount, start_date: key,
         end_date: end.toISOString().slice(0, 10), note: rb.note || "",
-        recurring_bill_id: rb.id,
+        recurring_bill_id: rb.id, due_date: dueDate,
       }});
       existingStarts.add(key);
       for (const uid of unitIds) {
@@ -106,7 +110,7 @@ function _render(container, data) {
   // Bucket bills by (year, month) of their due date.
   const byMonth = new Map();
   for (const b of bills) {
-    const due = billDueDate(b.end_date);
+    const due = effectiveDueDate(b);
     const key = `${due.getUTCFullYear()}-${String(due.getUTCMonth() + 1).padStart(2, "0")}`;
     if (!byMonth.has(key)) {
       byMonth.set(key, {
@@ -289,6 +293,7 @@ function _parseBill(r) {
     end_date: parseDate(r.end_date),
     note: r.note || "",
     recurring_bill_id: asOptInt(r.recurring_bill_id),
+    due_date: r.due_date || "",
     assignments: [],
   };
 }
@@ -302,6 +307,7 @@ function _parseRecurring(r) {
     end_date: r.end_date ? parseDate(r.end_date) : null,
     active: asBool(r.active, true),
     is_credit: asBool(r.is_credit, false),
+    bill_timing: (r.bill_timing || "end").trim() || "end",
   };
 }
 

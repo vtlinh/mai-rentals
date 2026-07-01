@@ -15,7 +15,7 @@
 import { splitBill, unitPersonDays } from "../billing.js";
 import { readAll } from "../sheets.js";
 import {
-  asFloat, asInt, asOptInt, billDueDate, clear, flash, h, MONTH_NAMES,
+  asFloat, asInt, asOptInt, clear, effectiveDueDate, flash, h, MONTH_NAMES,
   overlapDays, parseDate, today,
 } from "../util.js";
 
@@ -136,6 +136,7 @@ function _buildSections(data, pairs) {
     id: asInt(r.id), kind: r.kind || "", amount: asFloat(r.amount),
     start_date: parseDate(r.start_date), end_date: parseDate(r.end_date),
     note: r.note || "", recurring_bill_id: asOptInt(r.recurring_bill_id),
+    due_date: r.due_date || "",
   }));
   const billById = new Map(allBills.map((b) => [b.id, b]));
   for (const [bid, uids] of assignsByBill) {
@@ -184,7 +185,7 @@ function _buildSection(unit, occupancy, billsForUnit, occMap, paymentsForUnit) {
   for (const bill of billsForUnit) {
     if (overlapDays(occupancy.start_date, occupancy.end_date,
                     bill.start_date, bill.end_date) === 0) continue;
-    const due = billDueDate(bill.end_date);
+    const due = effectiveDueDate(bill);
     const y = due.getUTCFullYear(), m = due.getUTCMonth() + 1;
     const key = `${y}-${m}`;
 

@@ -12,7 +12,7 @@ import {
 } from "../sheets.js";
 import { splitBill } from "../billing.js";
 import {
-  asFloat, asInt, asOptInt, billDueDate, clear, flash, fmtMoney, h,
+  asFloat, asInt, asOptInt, clear, effectiveDueDate, flash, fmtMoney, h,
   MONTH_NAMES, parseDate,
 } from "../util.js";
 
@@ -108,10 +108,11 @@ function _computeOwed(data, unitId, year, month, kind) {
       id: asInt(r.id), kind: r.kind || "", amount: asFloat(r.amount),
       start_date: parseDate(r.start_date), end_date: parseDate(r.end_date),
       recurring_bill_id: asOptInt(r.recurring_bill_id),
+      due_date: r.due_date || "",
     }))
     .filter((b) => b.kind === kind)
     .filter((b) => {
-      const due = billDueDate(b.end_date);
+      const due = effectiveDueDate(b);
       return due.getUTCFullYear() === year && due.getUTCMonth() + 1 === month;
     });
   if (!bills.length) return 0;
