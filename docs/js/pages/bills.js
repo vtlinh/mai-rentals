@@ -158,13 +158,13 @@ function _renderOneOff(container, data) {
     h("th", null, ""),
   ));
 
-  bills.sort((a, b) => b.end_date - a.end_date);
+  const iso = (d) => (d ? d.toISOString().slice(0, 10) : "—");
+  bills.sort((a, b) => (b.end_date?.getTime() || 0) - (a.end_date?.getTime() || 0));
   for (const b of bills) {
-    const due = effectiveDueDate(b).toISOString().slice(0, 10);
+    const due = iso(effectiveDueDate(b));
     tbl.appendChild(h("tr", null,
       h("td", null, b.kind),
-      h("td", null,
-        `${b.start_date.toISOString().slice(0,10)} → ${b.end_date.toISOString().slice(0,10)}`),
+      h("td", null, `${iso(b.start_date)} → ${iso(b.end_date)}`),
       h("td", null, due),
       h("td", { class: "right" }, fmtMoney(b.amount)),
       h("td", null, (assignsByBill.get(b.id) || []).sort().join(", ")),

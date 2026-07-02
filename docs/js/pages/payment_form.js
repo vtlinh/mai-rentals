@@ -110,7 +110,7 @@ function _computeOwed(data, unitId, year, month, kind) {
       recurring_bill_id: asOptInt(r.recurring_bill_id),
       due_date: r.due_date || "",
     }))
-    .filter((b) => b.kind === kind)
+    .filter((b) => b.kind === kind && b.start_date && b.end_date)
     .filter((b) => {
       const due = effectiveDueDate(b);
       return due.getUTCFullYear() === year && due.getUTCMonth() + 1 === month;

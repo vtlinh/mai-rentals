@@ -137,7 +137,7 @@ function _buildSections(data, pairs) {
     start_date: parseDate(r.start_date), end_date: parseDate(r.end_date),
     note: r.note || "", recurring_bill_id: asOptInt(r.recurring_bill_id),
     due_date: r.due_date || "",
-  }));
+  })).filter((b) => b.start_date && b.end_date);
   const billById = new Map(allBills.map((b) => [b.id, b]));
   for (const [bid, uids] of assignsByBill) {
     for (const uid of uids) {
