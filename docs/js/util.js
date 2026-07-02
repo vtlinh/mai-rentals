@@ -93,6 +93,7 @@ export function overlapDays(a1, a2, b1, b2) {
 
 /** First of the month after `endDate` — the default "bill at end" due date. */
 export function billDueDate(endDate) {
+  if (!endDate) return null;
   const y = endDate.getUTCFullYear();
   const m = endDate.getUTCMonth(); // 0-based
   if (m === 11) return new Date(Date.UTC(y + 1, 0, 1));

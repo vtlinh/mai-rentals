@@ -88,7 +88,10 @@ async function _applyRecurring(data) {
 function _render(container, data) {
   const units = (data.units || []).map(_parseUnit);
   const occMap = _occMap(data.occupancies || []);
-  const bills = (data.bills || []).map(_parseBill);
+  // Rows with unparseable dates can't be split or bucketed by due month;
+  // they still show on the Bills page where they can be edited.
+  const bills = (data.bills || []).map(_parseBill)
+    .filter((b) => b.start_date && b.end_date);
   const payments = (data.payments || []).map(_parsePayment);
   const unitsById = new Map(units.map((u) => [u.id, u]));
 

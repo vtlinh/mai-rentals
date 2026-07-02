@@ -110,6 +110,7 @@ export function recurringInstances(rb, today) {
   let cap = today;
   if (endCap && endCap < cap) cap = endCap;
   const out = [];
+  if (!start) return out; // unparseable start_date: nothing to generate
 
   if (rb.recurrence === "daily") {
     let d = start;
