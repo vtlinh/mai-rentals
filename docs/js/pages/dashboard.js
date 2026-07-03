@@ -7,7 +7,7 @@
  */
 import { recurringInstances, splitBill } from "../billing.js";
 import {
-  appendRow, readAll, invalidate, nextId,
+  appendRow, readAll, nextId,
 } from "../sheets.js";
 import {
   asBool, asFloat, asInt, asOptInt, clear, effectiveDueDate, fmtMoney, h,
@@ -38,9 +38,9 @@ async function _applyRecurring(data) {
   const existingBills = (data.bills || []).map(_parseBill);
   const writes = [];
   for (const rb of rbs) {
-    if (!rb.active) continue;
+    if (!rb.active || !rb.start_date) continue;
     const existingStarts = new Set(
-      existingBills.filter((b) => b.recurring_bill_id === rb.id)
+      existingBills.filter((b) => b.recurring_bill_id === rb.id && b.start_date)
         .map((b) => b.start_date.toISOString().slice(0, 10))
     );
     const unitIds = (data.recurring_bill_units || [])
@@ -77,12 +77,14 @@ async function _applyRecurring(data) {
       }
     }
   }
-  // Fire-and-forget writes; we already updated the local cache so the render
-  // is correct. If a write fails the next page load will retry.
-  for (const w of writes) {
-    appendRow(w.tab, w.row).catch((err) => console.warn("recurring write failed", err));
+  // Write sequentially and stop on the first failure: bill_units rows
+  // reference bills appended just before them, and a reload that races
+  // in-flight appends would re-generate the same periods (duplicates).
+  try {
+    for (const w of writes) await appendRow(w.tab, w.row);
+  } catch (err) {
+    console.warn("recurring write failed; will retry next load", err);
   }
-  if (writes.length) invalidate("bills"), invalidate("bill_units");
 }
 
 function _render(container, data) {

@@ -11,6 +11,7 @@
 import {
   appendRow, deleteRow, invalidate, nextId, readAll, updateRow,
 } from "../sheets.js";
+import { deleteUnitCascade } from "../cascade.js";
 import {
   asInt, clear, datesValid, flash, formatDate, h, parseDate,
 } from "../util.js";
@@ -76,7 +77,7 @@ export default async function mountManageOccupancy(container, params) {
       onclick: async () => {
         if (!confirm(`Delete unit ${unit.name} and all its data? This cannot be undone.`)) return;
         try {
-          await _deleteUnitCascade(uid, data);
+          await deleteUnitCascade(uid, data);
           flash(`Unit '${unit.name}' removed.`);
           window.location.hash = "#units";
         } catch (e) {
@@ -208,26 +209,4 @@ function _field(label, input) {
     { style: { display: "inline-block", margin: "0" } },
     label, h("br"), input,
   );
-}
-
-async function _deleteUnitCascade(uid, data) {
-  // Build a list of THUNKS (not promises) so the calls actually run sequentially
-  // when awaited in order — pushing live promises would already have kicked them
-  // off in parallel, which can blow per-user batchUpdate rate limits.
-  const tasks = [];
-  const queue = (tab, idAttr) => {
-    for (const r of (data[tab] || [])) {
-      if (asInt(r[idAttr]) === uid) {
-        const rowId = asInt(r.id);
-        tasks.push(() => deleteRow(tab, rowId));
-      }
-    }
-  };
-  queue("occupancies", "unit_id");
-  queue("bill_units", "unit_id");
-  queue("recurring_bill_units", "unit_id");
-  queue("payments", "unit_id");
-  for (const t of tasks) await t();
-  await deleteRow("units", uid);
-  invalidate();
 }

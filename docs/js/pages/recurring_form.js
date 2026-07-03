@@ -12,6 +12,7 @@
 import {
   appendRow, deleteRow, invalidate, nextId, readAll, updateRow,
 } from "../sheets.js";
+import { deleteRecurringCascade } from "../cascade.js";
 import {
   asBool, asFloat, asInt, asOptInt, clear, csvFromList, datesValid, flash,
   formatDate, h, MONTH_NAMES, parseDate, parseRecurrenceConfig, WEEKDAY_NAMES,
@@ -205,7 +206,7 @@ export default async function mountRecurringForm(container, params, query) {
         if (!confirm(`Delete this recurring ${label.toLowerCase()} and all its ` +
                      `generated entries? This cannot be undone.`)) return;
         try {
-          await _deleteRecurringCascade(rid, data);
+          await deleteRecurringCascade(rid, data);
           flash("Recurring bill removed.");
           window.location.hash = "#bills";
         } catch (err) {
@@ -335,30 +336,4 @@ function _readConfig(form, recurrence) {
   return [...form.querySelectorAll(`input[name='${name}']:checked`)]
     .map((cb) => parseInt(cb.value, 10))
     .sort((a, b) => a - b);
-}
-
-async function _deleteRecurringCascade(rid, data) {
-  const tasks = [];
-  for (const b of (data.bills || [])) {
-    if (asOptInt(b.recurring_bill_id) === rid) {
-      const bid = asInt(b.id);
-      // delete the bill's bill_units, then the bill
-      for (const bu of (data.bill_units || [])) {
-        if (asInt(bu.bill_id) === bid) {
-          const buId = asInt(bu.id);
-          tasks.push(() => deleteRow("bill_units", buId));
-        }
-      }
-      tasks.push(() => deleteRow("bills", bid));
-    }
-  }
-  for (const r of (data.recurring_bill_units || [])) {
-    if (asInt(r.recurring_bill_id) === rid) {
-      const rowId = asInt(r.id);
-      tasks.push(() => deleteRow("recurring_bill_units", rowId));
-    }
-  }
-  for (const t of tasks) await t();
-  await deleteRow("recurring_bills", rid);
-  invalidate();
 }
