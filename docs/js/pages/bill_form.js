@@ -9,7 +9,7 @@ import {
   appendRow, deleteRow, invalidate, nextId, readAll, updateRow,
 } from "../sheets.js";
 import {
-  asFloat, asInt, asOptInt, clear, flash, formatDate, h, parseDate,
+  asFloat, asInt, asOptInt, clear, datesValid, flash, formatDate, h, parseDate,
 } from "../util.js";
 
 export default async function mountBillForm(container, params) {
@@ -164,6 +164,10 @@ export default async function mountBillForm(container, params) {
   // --- Submit handler ---
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
+    if (!datesValid([
+      [startInput.value, "Bill period start"],
+      [endInput.value, "Bill period end"],
+    ])) return;
     saveBtn.disabled = true;
     try {
       const checkedUids = [...form.querySelectorAll("input[name='unit_ids']:checked")]

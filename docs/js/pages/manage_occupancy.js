@@ -12,7 +12,7 @@ import {
   appendRow, deleteRow, invalidate, nextId, readAll, updateRow,
 } from "../sheets.js";
 import {
-  asInt, clear, flash, formatDate, h, parseDate,
+  asInt, clear, datesValid, flash, formatDate, h, parseDate,
 } from "../util.js";
 
 export default async function mountManageOccupancy(container, params) {
@@ -114,6 +114,10 @@ function _existingOcc(container, uid, o) {
   const save = h("button", {
     class: "btn btn-sm", type: "button",
     onclick: async () => {
+      if (!datesValid([
+        [startInput.value, "Start date"],
+        [endInput.value, "End date"],
+      ])) return;
       save.disabled = true;
       try {
         await updateRow("occupancies", o.id, {
@@ -171,6 +175,10 @@ function _addOccupancyForm(container, uid) {
     },
     onsubmit: async (e) => {
       e.preventDefault();
+      if (!datesValid([
+        [startInput.value, "Start date"],
+        [endInput.value, "End date"],
+      ])) return;
       try {
         const data = await readAll();
         const newId = nextId(data.occupancies || []);
