@@ -196,6 +196,45 @@ export async function deleteRow(tab, id) {
   invalidate(tab);
 }
 
+/**
+ * Delete many rows of one tab in a single batchUpdate. Row indices are
+ * resolved from one read and the deleteDimension requests are sorted
+ * descending, so earlier deletes in the batch can't shift later ones; the
+ * batch is atomic (a failure deletes nothing). Shares deleteRow/updateRow's
+ * limitation: indices assume the sheet has no interior blank rows (the
+ * reader skips them).
+ */
+export async function deleteRows(tab, ids) {
+  if (!ids || !ids.length) return;
+  await _loadGids();
+  const gid = _sheetGids.get(tab);
+  if (gid === undefined) return;
+  const rows = await readTab(tab);
+  const want = new Set(ids.map((id) => String(id)));
+  const indices = [];
+  for (let i = 0; i < rows.length; i++) {
+    if (want.has(String(rows[i].id))) indices.push(i + 1); // 0-based, header is row 0
+  }
+  if (!indices.length) return;
+  indices.sort((a, b) => b - a);
+  await _fetch(":batchUpdate", {
+    method: "POST",
+    body: JSON.stringify({
+      requests: indices.map((s) => ({
+        deleteDimension: {
+          range: {
+            sheetId: gid,
+            dimension: "ROWS",
+            startIndex: s,
+            endIndex: s + 1,
+          },
+        },
+      })),
+    }),
+  });
+  invalidate(tab);
+}
+
 // ---------------- Setup ----------------
 
 /**

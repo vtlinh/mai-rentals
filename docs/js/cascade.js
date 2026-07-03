@@ -5,10 +5,10 @@
  *   recurring_bills → recurring_bill_units
  *   units → occupancies / bill_units / recurring_bill_units / payments
  *
- * Deletes run sequentially (thunks, not live promises) to stay under
- * per-user Sheets batchUpdate rate limits.
+ * Each tab is cleared with one batched deleteRows call; child tabs go
+ * before their parents so a mid-cascade failure never orphans references.
  */
-import { deleteRow, invalidate } from "./sheets.js";
+import { deleteRow, deleteRows, invalidate } from "./sheets.js";
 import { asInt, asOptInt } from "./util.js";
 
 /**
@@ -16,46 +16,32 @@ import { asInt, asOptInt } from "./util.js";
  * those bills' unit assignments, and its own unit assignments.
  */
 export async function deleteRecurringCascade(rid, data) {
-  const tasks = [];
-  for (const b of (data.bills || [])) {
-    if (asOptInt(b.recurring_bill_id) === rid) {
-      const bid = asInt(b.id);
-      for (const bu of (data.bill_units || [])) {
-        if (asInt(bu.bill_id) === bid) {
-          const buId = asInt(bu.id);
-          tasks.push(() => deleteRow("bill_units", buId));
-        }
-      }
-      tasks.push(() => deleteRow("bills", bid));
-    }
-  }
-  for (const r of (data.recurring_bill_units || [])) {
-    if (asInt(r.recurring_bill_id) === rid) {
-      const rowId = asInt(r.id);
-      tasks.push(() => deleteRow("recurring_bill_units", rowId));
-    }
-  }
-  for (const t of tasks) await t();
+  const billIds = (data.bills || [])
+    .filter((b) => asOptInt(b.recurring_bill_id) === rid)
+    .map((b) => asInt(b.id));
+  const billIdSet = new Set(billIds);
+  const buIds = (data.bill_units || [])
+    .filter((bu) => billIdSet.has(asInt(bu.bill_id)))
+    .map((bu) => asInt(bu.id));
+  const rbuIds = (data.recurring_bill_units || [])
+    .filter((r) => asInt(r.recurring_bill_id) === rid)
+    .map((r) => asInt(r.id));
+  await deleteRows("bill_units", buIds);
+  await deleteRows("bills", billIds);
+  await deleteRows("recurring_bill_units", rbuIds);
   await deleteRow("recurring_bills", rid);
   invalidate();
 }
 
 /** Delete a unit and every row that references it. */
 export async function deleteUnitCascade(uid, data) {
-  const tasks = [];
-  const queue = (tab, idAttr) => {
-    for (const r of (data[tab] || [])) {
-      if (asInt(r[idAttr]) === uid) {
-        const rowId = asInt(r.id);
-        tasks.push(() => deleteRow(tab, rowId));
-      }
-    }
-  };
-  queue("occupancies", "unit_id");
-  queue("bill_units", "unit_id");
-  queue("recurring_bill_units", "unit_id");
-  queue("payments", "unit_id");
-  for (const t of tasks) await t();
+  const idsIn = (tab) => (data[tab] || [])
+    .filter((r) => asInt(r.unit_id) === uid)
+    .map((r) => asInt(r.id));
+  await deleteRows("occupancies", idsIn("occupancies"));
+  await deleteRows("bill_units", idsIn("bill_units"));
+  await deleteRows("recurring_bill_units", idsIn("recurring_bill_units"));
+  await deleteRows("payments", idsIn("payments"));
   await deleteRow("units", uid);
   invalidate();
 }
