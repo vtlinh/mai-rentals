@@ -129,9 +129,10 @@ function _renderRecurring(container, data) {
 }
 
 function _renderOneOff(container, data) {
-  container.appendChild(h("h2", null, "One-off bills"));
+  container.appendChild(h("h2", null, "One-off bills & credits"));
   container.appendChild(h("p", { class: "actions" },
     h("a", { class: "btn", href: "#bills/new" }, "+ Add bill"),
+    h("a", { class: "btn", href: "#bills/new?credit=1" }, "+ Add credit"),
   ));
 
   const bills = (data.bills || [])
@@ -167,7 +168,9 @@ function _renderOneOff(container, data) {
       h("td", null, b.kind),
       h("td", null, `${iso(b.start_date)} → ${iso(b.end_date)}`),
       h("td", null, due),
-      h("td", { class: "right" }, fmtMoney(b.amount)),
+      h("td", { class: "right" }, b.amount < 0
+        ? h("span", { style: { color: "var(--accent-green)" } }, fmtMoney(b.amount))
+        : fmtMoney(b.amount)),
       h("td", null, (assignsByBill.get(b.id) || []).sort().join(", ")),
       h("td", null,
         h("a", {
@@ -178,7 +181,7 @@ function _renderOneOff(container, data) {
   }
   if (!bills.length) {
     tbl.appendChild(h("tr", null,
-      h("td", { class: "muted", colspan: "6" }, "No one-off bills yet."),
+      h("td", { class: "muted", colspan: "6" }, "No one-off bills or credits yet."),
     ));
   }
   container.appendChild(tbl);

@@ -41,10 +41,10 @@ const ROUTES = {
     }
     return mountUnits(container);
   },
-  "bills": (container, params) => {
-    if (params[0] === "new") return mountBillForm(container, ["new"]);
+  "bills": (container, params, query) => {
+    if (params[0] === "new") return mountBillForm(container, ["new"], query);
     if (params.length >= 2 && params[1] === "edit") {
-      return mountBillForm(container, params);
+      return mountBillForm(container, params, query);
     }
     return mountBills(container);
   },
