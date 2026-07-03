@@ -10,7 +10,7 @@
  * re-signs already-generated bills so dashboard totals stay consistent.
  */
 import {
-  appendRow, deleteRow, invalidate, nextId, readAll, updateRow,
+  appendRow, deleteRows, invalidate, nextId, readAll, updateRow,
 } from "../sheets.js";
 import { deleteRecurringCascade } from "../cascade.js";
 import {
@@ -250,9 +250,10 @@ export default async function mountRecurringForm(container, params, query) {
         await updateRow("recurring_bills", rid, payload);
         // Replace unit assignments.
         const fresh = await readAll();
-        for (const r of (fresh.recurring_bill_units || [])) {
-          if (asInt(r.recurring_bill_id) === rid) await deleteRow("recurring_bill_units", asInt(r.id));
-        }
+        await deleteRows("recurring_bill_units",
+          (fresh.recurring_bill_units || [])
+            .filter((r) => asInt(r.recurring_bill_id) === rid)
+            .map((r) => asInt(r.id)));
         const fresh2 = await readAll();
         let nextRbu = nextId(fresh2.recurring_bill_units || []);
         for (const uid of checkedUids) {

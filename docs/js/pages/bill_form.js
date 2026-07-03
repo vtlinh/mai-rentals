@@ -6,7 +6,7 @@
  *   #bills/<id>/edit  → prefilled form + Delete bill in the save bar
  */
 import {
-  appendRow, deleteRow, invalidate, nextId, readAll, updateRow,
+  appendRow, deleteRow, deleteRows, invalidate, nextId, readAll, updateRow,
 } from "../sheets.js";
 import {
   asFloat, asInt, asOptInt, clear, datesValid, flash, formatDate, h, parseDate,
@@ -140,14 +140,10 @@ export default async function mountBillForm(container, params) {
         if (!confirm("Delete this bill? This cannot be undone.")) return;
         try {
           // Remove bill_units first to keep cascade clean.
-          const tasks = [];
-          for (const r of (data.bill_units || [])) {
-            if (asInt(r.bill_id) === billId) {
-              const rowId = asInt(r.id);
-              tasks.push(() => deleteRow("bill_units", rowId));
-            }
-          }
-          for (const t of tasks) await t();
+          const buIds = (data.bill_units || [])
+            .filter((r) => asInt(r.bill_id) === billId)
+            .map((r) => asInt(r.id));
+          await deleteRows("bill_units", buIds);
           await deleteRow("bills", billId);
           invalidate();
           flash("Bill removed.");
@@ -186,7 +182,7 @@ export default async function mountBillForm(container, params) {
         const toDelete = existing
           .filter((r) => asInt(r.bill_id) === billId)
           .map((r) => asInt(r.id));
-        for (const id of toDelete) await deleteRow("bill_units", id);
+        await deleteRows("bill_units", toDelete);
         // Add fresh assignments. Refresh nextId after deletes.
         const freshBu = (await readAll()).bill_units || [];
         let nextBuId = nextId(freshBu);
