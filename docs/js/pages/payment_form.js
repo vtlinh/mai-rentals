@@ -24,7 +24,7 @@ export default async function mountPaymentForm(container, params) {
   const kind = decodeURIComponent(kindParts.join("/"));
 
   clear(container);
-  const loading = h("p", { class: "muted" }, "Loading…");
+  const loading = h("p", { class: "loading" }, "Loading…");
   container.appendChild(loading);
 
   const data = await readAll();

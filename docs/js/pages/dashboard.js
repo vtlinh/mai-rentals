@@ -17,7 +17,7 @@ import {
 export default async function mountDashboard(container) {
   clear(container);
   container.appendChild(h("h1", null, "Dashboard"));
-  const loading = h("p", { class: "muted" }, "Loading…");
+  const loading = h("p", { class: "loading" }, "Loading…");
   container.appendChild(loading);
 
   const data = await readAll();
@@ -159,7 +159,9 @@ function _render(container, data) {
   container.appendChild(monthsHeader);
 
   if (!months.length) {
-    container.appendChild(h("p", { class: "muted" }, "No bills yet."));
+    container.appendChild(h("div", { class: "empty-state" },
+      h("p", null, "No bills yet."),
+      h("a", { class: "btn", href: "#bills/new" }, "+ Add a bill")));
   }
 
   for (const m of months) {

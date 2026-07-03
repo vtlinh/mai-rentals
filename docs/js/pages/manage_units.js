@@ -15,7 +15,7 @@ export default async function mountManageUnits(container) {
     h("a", { class: "btn-secondary btn-sm", href: "#units" }, "← Back to units"),
   ));
 
-  const loading = h("p", { class: "muted" }, "Loading…");
+  const loading = h("p", { class: "loading" }, "Loading…");
   container.appendChild(loading);
 
   const units = (await readTab("units"))

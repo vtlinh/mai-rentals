@@ -13,7 +13,7 @@ export default async function mountUnits(container) {
     h("a", { class: "btn-secondary", href: "#units/manage" }, "Manage units"),
   ));
 
-  const loading = h("p", { class: "muted" }, "Loading…");
+  const loading = h("p", { class: "loading" }, "Loading…");
   container.appendChild(loading);
 
   const data = await readAll();
@@ -36,10 +36,9 @@ export default async function mountUnits(container) {
   }
 
   if (!units.length) {
-    container.appendChild(h("p", { class: "muted" },
-      "No units yet. ",
-      h("a", { href: "#units/manage" }, "Manage units"),
-      " to add one."));
+    container.appendChild(h("div", { class: "empty-state" },
+      h("p", null, "No units yet."),
+      h("a", { class: "btn", href: "#units/manage" }, "Manage units")));
     return;
   }
 

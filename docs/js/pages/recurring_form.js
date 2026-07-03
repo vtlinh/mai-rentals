@@ -23,7 +23,7 @@ export default async function mountRecurringForm(container, params, query) {
   const rid = isEdit ? parseInt(params[0], 10) : null;
 
   clear(container);
-  const loading = h("p", { class: "muted" }, "Loading…");
+  const loading = h("p", { class: "loading" }, "Loading…");
   container.appendChild(loading);
 
   const data = await readAll();

@@ -16,7 +16,7 @@ export default async function mountBills(container) {
   clear(container);
   container.appendChild(h("h1", null, "Bills"));
 
-  const loading = h("p", { class: "muted" }, "Loading…");
+  const loading = h("p", { class: "loading" }, "Loading…");
   container.appendChild(loading);
 
   const data = await readAll();

@@ -29,7 +29,7 @@ export default async function mountPdf(container) {
     "Pick which units (and tenant sets) to include. One PDF will be generated " +
     "with a section per selection."));
 
-  const loading = h("p", { class: "muted" }, "Loading…");
+  const loading = h("p", { class: "loading" }, "Loading…");
   container.appendChild(loading);
 
   const data = await readAll();
@@ -52,7 +52,8 @@ export default async function mountPdf(container) {
 
   const form = h("form", { id: "pdfform" });
   if (!units.length) {
-    form.appendChild(h("p", { class: "muted" }, "No units yet."));
+    form.appendChild(h("div", { class: "empty-state" },
+      h("p", null, "No units yet.")));
   }
   for (const u of units) {
     const fs = h("fieldset",

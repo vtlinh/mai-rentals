@@ -20,7 +20,7 @@ export default async function mountBillForm(container, params) {
   clear(container);
   container.appendChild(h("h1", null, isEdit ? "Edit bill" : "New bill"));
 
-  const loading = h("p", { class: "muted" }, "Loading…");
+  const loading = h("p", { class: "loading" }, "Loading…");
   container.appendChild(loading);
 
   const data = await readAll();
