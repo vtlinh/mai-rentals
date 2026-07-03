@@ -1,9 +1,11 @@
 /**
- * Bill new/edit form.
+ * Bill / credit new/edit form.
  *
  * Routes:
- *   #bills/new        → blank form
- *   #bills/<id>/edit  → prefilled form + Delete bill in the save bar
+ *   #bills/new           → blank bill form
+ *   #bills/new?credit=1  → blank credit form (stored as a negative amount)
+ *   #bills/<id>/edit     → prefilled form + Delete in the save bar; credit
+ *                          mode follows the sign of the stored amount
  */
 import {
   appendRow, deleteRow, deleteRows, invalidate, nextId, readAll, updateRow,
@@ -12,13 +14,15 @@ import {
   asFloat, asInt, asOptInt, clear, datesValid, flash, formatDate, h, parseDate,
 } from "../util.js";
 
-export default async function mountBillForm(container, params) {
+export default async function mountBillForm(container, params, query) {
   // params[0] is either undefined (new) or the bill id string
   const isEdit = params.length && params[0] !== "new";
   const billId = isEdit ? parseInt(params[0], 10) : null;
+  let isCredit = !isEdit && query && query.get("credit") === "1";
 
   clear(container);
-  container.appendChild(h("h1", null, isEdit ? "Edit bill" : "New bill"));
+  const heading = h("h1", null);
+  container.appendChild(heading);
 
   const loading = h("p", { class: "loading" }, "Loading…");
   container.appendChild(loading);
@@ -51,9 +55,18 @@ export default async function mountBillForm(container, params) {
       note: rawBill.note || "",
       recurring_bill_id: asOptInt(rawBill.recurring_bill_id),
     };
+    isCredit = bill.amount < 0;
     for (const r of (data.bill_units || [])) {
       if (asInt(r.bill_id) === billId) selectedUnitIds.add(asInt(r.unit_id));
     }
+  }
+
+  const kindWord = isCredit ? "credit" : "bill";
+  heading.textContent = `${isEdit ? "Edit" : "New"} ${kindWord}`;
+  if (isCredit) {
+    container.appendChild(h("p", { class: "muted" },
+      "A credit is stored as a negative amount and reduces what the assigned " +
+      "units owe (split across them by person-days, same as bills)."));
   }
 
   // --- Form ---
@@ -77,9 +90,10 @@ export default async function mountBillForm(container, params) {
   // Amount
   const amountInput = h("input", {
     type: "number", step: "0.01", min: "0", name: "amount", required: true,
-    value: bill ? String(bill.amount) : "",
+    value: bill ? String(Math.abs(bill.amount)) : "",
   });
-  form.appendChild(h("label", null, "Amount ($)", amountInput));
+  form.appendChild(h("label", null,
+    isCredit ? "Credit amount ($)" : "Amount ($)", amountInput));
 
   // Start / end dates
   const startInput = h("input", {
@@ -137,7 +151,7 @@ export default async function mountBillForm(container, params) {
       class: "inline danger",
       onsubmit: async (e) => {
         e.preventDefault();
-        if (!confirm("Delete this bill? This cannot be undone.")) return;
+        if (!confirm(`Delete this ${kindWord}? This cannot be undone.`)) return;
         try {
           // Remove bill_units first to keep cascade clean.
           const buIds = (data.bill_units || [])
@@ -146,13 +160,13 @@ export default async function mountBillForm(container, params) {
           await deleteRows("bill_units", buIds);
           await deleteRow("bills", billId);
           invalidate();
-          flash("Bill removed.");
+          flash(`${isCredit ? "Credit" : "Bill"} removed.`);
           window.location.hash = "#bills";
         } catch (err) {
           flash(`Delete failed: ${err.message}`, "err");
         }
       },
-    }, h("button", { class: "btn-danger", type: "submit" }, "Delete bill")));
+    }, h("button", { class: "btn-danger", type: "submit" }, `Delete ${kindWord}`)));
   }
 
   container.appendChild(saveBar);
@@ -168,9 +182,10 @@ export default async function mountBillForm(container, params) {
     try {
       const checkedUids = [...form.querySelectorAll("input[name='unit_ids']:checked")]
         .map((cb) => parseInt(cb.value, 10));
+      const magnitude = Math.abs(parseFloat(amountInput.value));
       const payload = {
         kind: kindSelect.value,
-        amount: parseFloat(amountInput.value),
+        amount: isCredit ? -magnitude : magnitude,
         start_date: startInput.value,
         end_date: endInput.value,
         note: noteInput.value.trim(),
@@ -193,7 +208,7 @@ export default async function mountBillForm(container, params) {
           nextBuId++;
         }
         invalidate();
-        flash("Bill updated.");
+        flash(`${isCredit ? "Credit" : "Bill"} updated.`);
       } else {
         const newId = nextId(data.bills || []);
         await appendRow("bills", { id: newId, ...payload, recurring_bill_id: "" });
@@ -206,7 +221,7 @@ export default async function mountBillForm(container, params) {
           nextBuId++;
         }
         invalidate();
-        flash("Bill added.");
+        flash(`${isCredit ? "Credit" : "Bill"} added.`);
       }
       window.location.hash = "#bills";
     } catch (err) {
