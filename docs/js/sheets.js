@@ -166,6 +166,38 @@ export async function updateRow(tab, id, fields) {
   invalidate(tab);
 }
 
+/**
+ * Update many rows of one tab in a single values:batchUpdate. `updates` is an
+ * array of [id, fields] pairs. Row indices are resolved from one read, so this
+ * shares deleteRow/updateRow's limitation: indices assume the sheet has no
+ * interior blank rows (the reader skips them).
+ */
+export async function updateRows(tab, updates) {
+  if (!updates || !updates.length) return;
+  const cols = TABS[tab];
+  if (!cols) throw new Error(`unknown tab: ${tab}`);
+  const rows = await readTab(tab);
+  const idxById = new Map(rows.map((r, i) => [String(r.id), i]));
+  const lastCol = _columnLetter(cols.length);
+  const data = [];
+  for (const [id, fields] of updates) {
+    const idx = idxById.get(String(id));
+    if (idx === undefined) continue;
+    const sheetRow = idx + 2; // +1 for header, +1 for 1-based
+    const merged = { ...rows[idx], ...fields };
+    data.push({
+      range: `${tab}!A${sheetRow}:${lastCol}${sheetRow}`,
+      values: [cols.map((c) => _toCell(merged[c]))],
+    });
+  }
+  if (!data.length) return;
+  await _fetch(`/values:batchUpdate`, {
+    method: "POST",
+    body: JSON.stringify({ valueInputOption: "USER_ENTERED", data }),
+  });
+  invalidate(tab);
+}
+
 /** Delete a row by ID. Uses batchUpdate (requires sheet gid). */
 export async function deleteRow(tab, id) {
   await _loadGids();

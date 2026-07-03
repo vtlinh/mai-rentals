@@ -11,7 +11,7 @@
 import {
   appendRow, deleteRow, invalidate, nextId, readAll, updateRow,
 } from "../sheets.js";
-import { deleteUnitCascade } from "../cascade.js";
+import { deleteUnitCascade, removeCoveredPayments } from "../cascade.js";
 import {
   asInt, clear, datesValid, flash, formatDate, h, parseDate, parseNamesCsv,
 } from "../util.js";
@@ -43,7 +43,8 @@ export default async function mountManageOccupancy(container, params) {
     "Each occupancy is a tenant headcount over an inclusive date range. " +
     "Bills are split across units by person-days (tenants × overlapping days). " +
     "Utilities ticked as covered are automatically counted as paid for this " +
-    "tenancy (e.g. a fixed-fee contract that includes utilities)."));
+    "tenancy (e.g. a fixed-fee contract that includes utilities); saving " +
+    "removes any recorded payments the coverage makes redundant."));
 
   const categories = (data.categories || [])
     .map((r) => (r.name || "").trim())
@@ -138,7 +139,10 @@ function _existingOcc(container, uid, o, categories) {
           covered_kinds: covered.value(),
         });
         invalidate("occupancies");
-        flash("Occupancy updated.");
+        const removed = await removeCoveredPayments(uid, await readAll());
+        flash(removed
+          ? `Occupancy updated; removed ${removed} payment row${removed === 1 ? "" : "s"} now auto-covered.`
+          : "Occupancy updated.");
       } catch (e) {
         flash(`Save failed: ${e.message}`, "err");
       } finally {
@@ -204,7 +208,10 @@ function _addOccupancyForm(container, uid, categories) {
           covered_kinds: covered.value(),
         });
         invalidate("occupancies");
-        flash("Occupancy added.");
+        const removed = await removeCoveredPayments(uid, await readAll());
+        flash(removed
+          ? `Occupancy added; removed ${removed} payment row${removed === 1 ? "" : "s"} now auto-covered.`
+          : "Occupancy added.");
         await mountManageOccupancy(container, [String(uid)]);
       } catch (err) {
         flash(`Add failed: ${err.message}`, "err");
