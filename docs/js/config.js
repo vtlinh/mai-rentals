@@ -29,7 +29,9 @@ export const SHEET_ID = "1mOdFEWetY0uKC6G_qgUxIBB9MGshnVIhxLP7EOMS3NU";
  */
 export const TABS = {
   units: ["id", "name", "note"],
-  occupancies: ["id", "unit_id", "tenant_count", "start_date", "end_date"],
+  // covered_kinds: CSV of category names ("water, gas") whose bills are
+  // auto-counted as paid for this tenancy (e.g. a fixed-fee contract).
+  occupancies: ["id", "unit_id", "tenant_count", "start_date", "end_date", "covered_kinds"],
   // due_date is optional: empty → derived as the 1st of the month after end_date.
   bills: ["id", "kind", "amount", "start_date", "end_date", "note", "recurring_bill_id", "due_date"],
   bill_units: ["id", "bill_id", "unit_id"],
