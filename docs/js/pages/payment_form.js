@@ -8,7 +8,7 @@
  * the dashboard cell.
  */
 import {
-  appendRow, invalidate, nextId, readAll, updateRow,
+  appendRow, deleteRow, invalidate, nextId, readAll, updateRow,
 } from "../sheets.js";
 import { splitBill } from "../billing.js";
 import {
@@ -73,9 +73,15 @@ export default async function mountPaymentForm(container, params) {
     saveBtn.disabled = true;
     try {
       const amount = parseFloat(amountInput.value);
-      if (existing) {
+      // A $0 payment means "no payment" — keep the sheet free of dead rows.
+      if (existing && amount === 0) {
+        await deleteRow("payments", existing.id);
+        flash(`Cleared payment for ${unit.name} (${kind}).`);
+      } else if (existing) {
         await updateRow("payments", existing.id, { amount });
         flash(`Updated payment for ${unit.name} (${kind}).`);
+      } else if (amount === 0) {
+        flash(`No payment recorded for ${unit.name} (${kind}).`);
       } else {
         const fresh = await readAll();
         const newId = nextId(fresh.payments || []);
