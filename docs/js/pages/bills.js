@@ -5,7 +5,8 @@
  * "edit" link per row; delete moves to inside the bill edit form (matching
  * the Flask app's pattern).
  */
-import { deleteRow, invalidate, readAll, updateRow } from "../sheets.js";
+import { invalidate, readAll, updateRow } from "../sheets.js";
+import { deleteRecurringCascade } from "../cascade.js";
 import {
   asBool, asFloat, asInt, asOptInt, clear, effectiveDueDate, flash, fmtMoney, h,
   MONTH_NAMES, parseDate, parseRecurrenceConfig, WEEKDAY_NAMES,
@@ -95,7 +96,7 @@ function _renderRecurring(container, data) {
           if (!confirm(`Delete this recurring ${kindWord} and all its generated ` +
                        `entries? This cannot be undone.`)) return;
           try {
-            await _deleteRecurringCascade(rb.id, data);
+            await deleteRecurringCascade(rb.id, data);
             flash(`Recurring ${kindWord} removed.`);
             await mountBills(container);
           } catch (e) { flash(`Delete failed: ${e.message}`, "err"); }
@@ -210,36 +211,6 @@ function _parseBill(r) {
     recurring_bill_id: asOptInt(r.recurring_bill_id),
     due_date: r.due_date || "",
   };
-}
-
-/**
- * Delete a recurring template and everything it spawned: its generated bills,
- * those bills' unit assignments, and its own unit assignments. Runs deletes
- * sequentially to stay under per-user Sheets batchUpdate rate limits.
- */
-async function _deleteRecurringCascade(rid, data) {
-  const tasks = [];
-  for (const b of (data.bills || [])) {
-    if (asOptInt(b.recurring_bill_id) === rid) {
-      const bid = asInt(b.id);
-      for (const bu of (data.bill_units || [])) {
-        if (asInt(bu.bill_id) === bid) {
-          const buId = asInt(bu.id);
-          tasks.push(() => deleteRow("bill_units", buId));
-        }
-      }
-      tasks.push(() => deleteRow("bills", bid));
-    }
-  }
-  for (const r of (data.recurring_bill_units || [])) {
-    if (asInt(r.recurring_bill_id) === rid) {
-      const rowId = asInt(r.id);
-      tasks.push(() => deleteRow("recurring_bill_units", rowId));
-    }
-  }
-  for (const t of tasks) await t();
-  await deleteRow("recurring_bills", rid);
-  invalidate();
 }
 
 function _configDisplay(recurrence, config) {
