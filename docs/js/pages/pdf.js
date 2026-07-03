@@ -183,12 +183,16 @@ function _buildSections(data, pairs) {
 function _buildSection(unit, occupancy, billsForUnit, occMap, paymentsForUnit) {
   const byMonth = new Map();        // "y-m" → Map(kind → {owed, paid})
   const unitOwedByMK = new Map();   // "y-m-kind" → unit_share total
+  const now = today();
+  const curYM = now.getUTCFullYear() * 12 + now.getUTCMonth();
 
   for (const bill of billsForUnit) {
     if (overlapDays(occupancy.start_date, occupancy.end_date,
                     bill.start_date, bill.end_date) === 0) continue;
     const due = effectiveDueDate(bill);
     const y = due.getUTCFullYear(), m = due.getUTCMonth() + 1;
+    // Statements only cover months due so far — skip future months.
+    if (y * 12 + (m - 1) > curYM) continue;
     const key = `${y}-${m}`;
 
     const shares = splitBill(bill, occMap);
