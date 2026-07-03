@@ -12,7 +12,7 @@
  *   • unit-level payments are attributed to occupancies proportionally to the
  *     occupancy's share of the month's owed total
  */
-import { splitBill, unitPersonDays } from "../billing.js";
+import { coversKind, splitBill, unitPersonDays } from "../billing.js";
 import { readAll } from "../sheets.js";
 import {
   asFloat, asInt, asOptInt, clear, effectiveDueDate, flash, h, MONTH_NAMES,
@@ -121,6 +121,7 @@ function _buildSections(data, pairs) {
       id: asInt(r.id), unit_id: asInt(r.unit_id),
       tenant_count: asInt(r.tenant_count),
       start_date: parseDate(r.start_date), end_date: parseDate(r.end_date),
+      covered_kinds: r.covered_kinds || "",
     };
     occById.set(o.id, o);
     if (!occByUnit.has(o.unit_id)) occByUnit.set(o.unit_id, []);
@@ -203,18 +204,21 @@ function _buildSection(unit, occupancy, billsForUnit, occMap, paymentsForUnit) {
 
     if (!byMonth.has(key)) byMonth.set(key, { y, m, cats: new Map() });
     const cats = byMonth.get(key).cats;
-    if (!cats.has(bill.kind)) cats.set(bill.kind, { owed: 0, paid: 0 });
+    if (!cats.has(bill.kind)) cats.set(bill.kind, { owed: 0, paid: 0, covered: 0 });
     cats.get(bill.kind).owed += occShare;
+    // Kinds covered by this tenancy's contract count as paid automatically.
+    if (coversKind(occupancy, bill.kind)) cats.get(bill.kind).covered += occShare;
     const mk = `${y}-${m}-${bill.kind}`;
     unitOwedByMK.set(mk, (unitOwedByMK.get(mk) || 0) + unitShare);
   }
 
-  // Attribute payments proportionally.
+  // Attribute payments proportionally, then add auto-covered amounts.
   for (const { y, m, cats } of byMonth.values()) {
     for (const [kind, cell] of cats) {
       const unitOwed = unitOwedByMK.get(`${y}-${m}-${kind}`) || 0;
       const unitPaid = paymentsForUnit.get(`${y}-${m}-${kind}`) || 0;
       if (unitOwed > 0) cell.paid = unitPaid * (cell.owed / unitOwed);
+      cell.paid += cell.covered;
     }
   }
 

@@ -5,13 +5,13 @@
  * the background (so the dashboard reflects entries due as of today), then
  * groups bills by due month and computes per-unit owed/paid/remaining.
  */
-import { recurringInstances, splitBill } from "../billing.js";
+import { coveredFraction, recurringInstances, splitBill } from "../billing.js";
 import {
   appendRow, readAll, nextId,
 } from "../sheets.js";
 import {
   asBool, asFloat, asInt, asOptInt, clear, effectiveDueDate, fmtMoney, h,
-  MONTH_NAMES, parseDate, today,
+  MONTH_NAMES, parseDate, parseNamesCsv, today,
 } from "../util.js";
 
 export default async function mountDashboard(container) {
@@ -168,8 +168,10 @@ function _render(container, data) {
     const section = h("section", { style: { marginBottom: "2rem" } });
     section.appendChild(h("h3", null, `${m.year}-${String(m.month).padStart(2, "0")}`));
 
-    // totals[unit_name][kind] = owed
+    // totals[unit_name][kind] = owed; coveredTotals mirrors it with the part
+    // auto-covered by the tenancy (counted as paid without a payment row).
     const totals = new Map();
+    const coveredTotals = new Map();
     const kindsPresent = new Set();
     const billRows = [];
 
@@ -183,6 +185,12 @@ function _render(container, data) {
         if (!totals.has(sh.unit_name)) totals.set(sh.unit_name, new Map());
         const byKind = totals.get(sh.unit_name);
         byKind.set(b.kind, (byKind.get(b.kind) || 0) + sh.amount);
+        const cf = coveredFraction(occMap[sh.unit_id] || [], b);
+        if (cf > 0) {
+          if (!coveredTotals.has(sh.unit_name)) coveredTotals.set(sh.unit_name, new Map());
+          const covByKind = coveredTotals.get(sh.unit_name);
+          covByKind.set(b.kind, (covByKind.get(b.kind) || 0) + sh.amount * cf);
+        }
       }
     }
     const kindsSorted = [...kindsPresent].sort();
@@ -203,17 +211,19 @@ function _render(container, data) {
       if (Math.round(rowTotal * 100) === 0) continue;
       anyRow = true;
       const u = units.find((x) => x.name === name);
+      const covByKind = coveredTotals.get(name);
       const row = h("tr", null, h("td", null, name));
       for (const k of kindsSorted) {
         const owed = Math.round((byKind.get(k) || 0) * 100) / 100;
+        const covered = covByKind ? Math.round((covByKind.get(k) || 0) * 100) / 100 : 0;
         const payment = u ? payments.find((p) =>
           p.unit_id === u.id && p.year === m.year && p.month === m.month && p.kind === k) : null;
         const paid = payment ? Math.round(payment.amount * 100) / 100 : 0;
-        const remaining = Math.round((owed - paid) * 100) / 100;
+        const remaining = Math.round((owed - paid - covered) * 100) / 100;
         const cell = h("td", { class: "right" });
         if (owed) {
           cell.appendChild(document.createTextNode(fmtMoney(owed)));
-          if (u) {
+          if (u && covered < owed) {
             cell.appendChild(document.createTextNode(" "));
             cell.appendChild(h("a", {
               class: "btn-secondary btn-sm",
@@ -224,7 +234,7 @@ function _render(container, data) {
           if (remaining <= 0) {
             cell.appendChild(h("span",
               { style: { color: "var(--accent-green)", fontSize: "0.85em" } },
-              "(paid)"));
+              covered > 0 && paid <= 0 ? "(covered)" : "(paid)"));
           } else {
             cell.appendChild(h("span",
               { style: { color: "var(--accent-orange)", fontSize: "0.85em" } },
@@ -296,6 +306,7 @@ function _parseOccupancy(r) {
     tenant_count: asInt(r.tenant_count),
     start_date: parseDate(r.start_date),
     end_date: parseDate(r.end_date),
+    covered_kinds: parseNamesCsv(r.covered_kinds),
   };
 }
 

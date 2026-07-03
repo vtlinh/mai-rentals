@@ -13,7 +13,7 @@ import {
 } from "../sheets.js";
 import { deleteUnitCascade } from "../cascade.js";
 import {
-  asInt, clear, datesValid, flash, formatDate, h, parseDate,
+  asInt, clear, datesValid, flash, formatDate, h, parseDate, parseNamesCsv,
 } from "../util.js";
 
 export default async function mountManageOccupancy(container, params) {
@@ -41,7 +41,14 @@ export default async function mountManageOccupancy(container, params) {
     h("a", { class: "btn-secondary btn-sm", href: "#units" }, "← Back to units")));
   container.appendChild(h("p", { class: "muted" },
     "Each occupancy is a tenant headcount over an inclusive date range. " +
-    "Bills are split across units by person-days (tenants × overlapping days)."));
+    "Bills are split across units by person-days (tenants × overlapping days). " +
+    "Utilities ticked as covered are automatically counted as paid for this " +
+    "tenancy (e.g. a fixed-fee contract that includes utilities)."));
+
+  const categories = (data.categories || [])
+    .map((r) => (r.name || "").trim())
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b));
 
   const occs = (data.occupancies || [])
     .filter((r) => asInt(r.unit_id) === uid)
@@ -50,12 +57,13 @@ export default async function mountManageOccupancy(container, params) {
       tenant_count: asInt(r.tenant_count),
       start_date: parseDate(r.start_date),
       end_date: parseDate(r.end_date),
+      covered_kinds: parseNamesCsv(r.covered_kinds),
     }))
     .sort((a, b) => a.start_date - b.start_date);
 
   const list = h("div");
   if (occs.length) {
-    for (const o of occs) list.appendChild(_existingOcc(container, uid, o));
+    for (const o of occs) list.appendChild(_existingOcc(container, uid, o, categories));
   } else {
     list.appendChild(h("div", { class: "empty-state" },
       h("p", null, "No occupancies yet — add one below.")));
@@ -64,7 +72,7 @@ export default async function mountManageOccupancy(container, params) {
 
   // Add occupancy
   container.appendChild(h("h3", null, "Add occupancy"));
-  container.appendChild(_addOccupancyForm(container, uid));
+  container.appendChild(_addOccupancyForm(container, uid, categories));
 
   // Delete unit danger section
   container.appendChild(h("hr", { style: { marginTop: "2rem" } }));
@@ -89,7 +97,7 @@ export default async function mountManageOccupancy(container, params) {
   ));
 }
 
-function _existingOcc(container, uid, o) {
+function _existingOcc(container, uid, o, categories) {
   const row = h("div", {
     class: "card",
     style: {
@@ -112,6 +120,7 @@ function _existingOcc(container, uid, o) {
     value: formatDate(o.end_date),
     style: { minWidth: "auto" },
   });
+  const covered = _coveredPicker(categories, o.covered_kinds);
 
   const save = h("button", {
     class: "btn btn-sm", type: "button",
@@ -126,6 +135,7 @@ function _existingOcc(container, uid, o) {
           tenant_count: parseInt(tenantsInput.value, 10),
           start_date: startInput.value,
           end_date: endInput.value,
+          covered_kinds: covered.value(),
         });
         invalidate("occupancies");
         flash("Occupancy updated.");
@@ -155,12 +165,13 @@ function _existingOcc(container, uid, o) {
   row.appendChild(_field("Tenants", tenantsInput));
   row.appendChild(_field("Start", startInput));
   row.appendChild(_field("End (inclusive)", endInput));
+  row.appendChild(_field("Covered utilities (auto-paid)", covered.el));
   row.appendChild(save);
   row.appendChild(del);
   return row;
 }
 
-function _addOccupancyForm(container, uid) {
+function _addOccupancyForm(container, uid, categories) {
   const tenantsInput = h("input", {
     type: "number", min: "1", required: true, value: "1",
     style: { minWidth: "auto", width: "70px" },
@@ -171,6 +182,7 @@ function _addOccupancyForm(container, uid) {
   const endInput = h("input", {
     type: "date", required: true, style: { minWidth: "auto" },
   });
+  const covered = _coveredPicker(categories, []);
   const form = h("form", {
     style: {
       display: "flex", gap: "0.5rem", alignItems: "flex-end", flexWrap: "wrap",
@@ -189,6 +201,7 @@ function _addOccupancyForm(container, uid) {
           tenant_count: parseInt(tenantsInput.value, 10),
           start_date: startInput.value,
           end_date: endInput.value,
+          covered_kinds: covered.value(),
         });
         invalidate("occupancies");
         flash("Occupancy added.");
@@ -201,8 +214,36 @@ function _addOccupancyForm(container, uid) {
   form.appendChild(_field("Tenants", tenantsInput));
   form.appendChild(_field("Start", startInput));
   form.appendChild(_field("End (inclusive)", endInput));
+  form.appendChild(_field("Covered utilities (auto-paid)", covered.el));
   form.appendChild(h("button", { class: "btn", type: "submit" }, "Add"));
   return form;
+}
+
+/**
+ * Checkbox row over the bill categories. Returns { el, value() } where
+ * value() is the CSV to store in covered_kinds.
+ */
+function _coveredPicker(categories, selected) {
+  const el = h("div", {
+    style: { display: "flex", gap: "0.6rem", flexWrap: "wrap", padding: "0.35rem 0" },
+  });
+  const sel = new Set(selected.map((s) => s.toLowerCase()));
+  const boxes = [];
+  if (!categories.length) {
+    el.appendChild(h("span", { class: "muted" }, "no categories defined"));
+  }
+  for (const c of categories) {
+    const cb = h("input", { type: "checkbox", value: c });
+    if (sel.has(c.toLowerCase())) cb.checked = true;
+    boxes.push(cb);
+    el.appendChild(h("label",
+      { style: { display: "inline", margin: "0", whiteSpace: "nowrap" } },
+      cb, " ", c));
+  }
+  return {
+    el,
+    value: () => boxes.filter((b) => b.checked).map((b) => b.value).join(", "),
+  };
 }
 
 function _field(label, input) {

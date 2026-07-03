@@ -45,6 +45,14 @@ export function parseRecurrenceConfig(raw) {
     .filter((n) => Number.isFinite(n));
 }
 
+/** Parse a CSV cell of names ("water, gas") into a trimmed string array. */
+export function parseNamesCsv(raw) {
+  if (!raw) return [];
+  return String(raw).split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 export function csvFromList(list) {
   if (!list || !list.length) return "";
   return list.map((x) => String(parseInt(x, 10))).join(",");

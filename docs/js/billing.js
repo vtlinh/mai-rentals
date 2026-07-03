@@ -17,7 +17,8 @@
  *   • A unit with no overlap owes $0 and is filtered out on the dashboard.
  */
 import {
-  addDays, lastDayOfMonth, overlapDays, parseDate, parseRecurrenceConfig,
+  addDays, lastDayOfMonth, overlapDays, parseDate, parseNamesCsv,
+  parseRecurrenceConfig,
 } from "./util.js";
 
 export function unitPersonDays(occupancies, bill) {
@@ -83,6 +84,34 @@ export function splitBill(bill, occMap) {
     });
   }
   return shares;
+}
+
+/** Case-insensitive membership of `kind` in an occupancy's covered_kinds. */
+export function coversKind(occupancy, kind) {
+  const k = String(kind || "").trim().toLowerCase();
+  if (!k) return false;
+  const kinds = Array.isArray(occupancy.covered_kinds)
+    ? occupancy.covered_kinds
+    : parseNamesCsv(occupancy.covered_kinds);
+  return kinds.some((c) => String(c).trim().toLowerCase() === k);
+}
+
+/**
+ * Fraction of a unit's person-days on `bill` contributed by occupancies whose
+ * covered_kinds include the bill's kind — i.e. how much of the unit's share
+ * is auto-covered (counted as paid). 1 when every overlapping occupancy
+ * covers the kind, 0 when none does.
+ */
+export function coveredFraction(occupancies, bill) {
+  let total = 0, covered = 0;
+  for (const o of occupancies) {
+    const start = o.start_date instanceof Date ? o.start_date : parseDate(o.start_date);
+    const end = o.end_date instanceof Date ? o.end_date : parseDate(o.end_date);
+    const pd = overlapDays(start, end, bill.start_date, bill.end_date) * (o.tenant_count || 0);
+    total += pd;
+    if (coversKind(o, bill.kind)) covered += pd;
+  }
+  return total > 0 ? covered / total : 0;
 }
 
 // ---------------- Recurring-bill generation ----------------
