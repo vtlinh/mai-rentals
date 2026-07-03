@@ -13,7 +13,7 @@ export default async function mountCategories(container) {
     "Categories available when creating bills. Removing a category does not " +
     "change bills already using it."));
 
-  const loading = h("p", { class: "muted" }, "Loading…");
+  const loading = h("p", { class: "loading" }, "Loading…");
   container.appendChild(loading);
   const rows = await readTab("categories");
   loading.remove();

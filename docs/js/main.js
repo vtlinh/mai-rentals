@@ -110,10 +110,11 @@ function renderNav() {
     nav.appendChild(navLink("#dashboard", "Dashboard"));
     nav.appendChild(navLink("#units", "Units"));
     nav.appendChild(navLink("#bills", "Bills"));
-    nav.appendChild(h("span", { class: "spacer" }));
+    const user = h("span", { class: "nav-user" });
     const email = getUserEmail();
-    if (email) nav.appendChild(h("span", { class: "muted" }, email));
-    nav.appendChild(h("button", { class: "btn-secondary btn-sm", onclick: signOut }, "Log out"));
+    if (email) user.appendChild(h("span", { class: "muted" }, email));
+    user.appendChild(h("button", { class: "btn-secondary btn-sm", onclick: signOut }, "Log out"));
+    nav.appendChild(user);
   } else {
     nav.appendChild(h("span", { class: "spacer" }));
     nav.appendChild(h("button", { class: "btn", onclick: signIn }, "Sign in with Google"));
@@ -121,10 +122,21 @@ function renderNav() {
 }
 
 function navLink(href, label) {
-  return h("a", { href }, label);
+  const current = _navSection(window.location.hash);
+  const active = href.replace(/^#/, "") === current;
+  return h("a", { href, class: active ? "active" : null }, label);
+}
+
+/** Which top-nav entry the current hash belongs under. */
+function _navSection(hash) {
+  const route = (hash || "").replace(/^#/, "").split("?")[0].split("/")[0];
+  if (route === "" || route === "payment" || route === "pdf") return "dashboard";
+  if (route === "recurring" || route === "categories") return "bills";
+  return route;
 }
 
 async function render() {
+  renderNav(); // refresh active-link highlight for the new route
   const app = document.getElementById("app");
   clear(app);
   if (!isSignedIn()) {

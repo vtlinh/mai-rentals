@@ -8,6 +8,8 @@
   --border: #dddddd;
   --row-border: #eeeeee;
   --th-bg: #f4f4f4;
+  --zebra: #fafafa;
+  --row-hover: #f0f4ff;
   --flash-bg: #e7f5e7;
   --flash-border: #b6dfb6;
   --flash-bg-err: #fde7e7;
@@ -31,10 +33,12 @@
     --border: #3a3f47;
     --row-border: #2e333b;
     --th-bg: #2b3038;
-    --flash-bg: #1f3a26;
-    --flash-border: #3a6b48;
-    --flash-bg-err: #3a1f1f;
-    --flash-border-err: #6b3a3a;
+    --zebra: #1f232a;
+    --row-hover: #262d3a;
+    --flash-bg: #234d30;
+    --flash-border: #4d9964;
+    --flash-bg-err: #4d2626;
+    --flash-border-err: #995050;
     --link: #6cb6ff;
     --primary: #3b82f6;
     --primary-hover: #60a5fa;
@@ -51,9 +55,15 @@
 
 body {
   font-family: system-ui, sans-serif;
+  line-height: 1.55;
   max-width: 960px; margin: 2rem auto; padding: 0 1rem;
   color: var(--text); background: var(--bg);
 }
+
+h1 { font-size: 1.7rem; font-weight: 650; margin: 1.2rem 0 0.8rem; }
+h2 { font-size: 1.25rem; font-weight: 650; margin: 1.6rem 0 0.6rem; }
+h3 { font-size: 1.05rem; font-weight: 650; margin: 1.2rem 0 0.5rem; }
+h4 { font-size: 0.95rem; font-weight: 650; margin: 1rem 0 0.4rem; }
 
 a { color: var(--link); }
 
@@ -62,7 +72,21 @@ nav {
   position: sticky; top: 0; z-index: 20;
   background: var(--surface); padding: 0.6rem 0; border-bottom: 1px solid var(--border);
 }
+nav a { text-decoration: none; padding: 0.15rem 0.1rem; }
+nav a:hover { text-decoration: underline; }
+nav a.active {
+  font-weight: 650;
+  border-bottom: 2px solid var(--primary);
+}
 nav .spacer { margin-left: auto; }
+.nav-user {
+  margin-left: auto;
+  display: inline-flex; gap: 0.6rem; align-items: center; white-space: nowrap;
+}
+
+/* Flash sits between the sticky nav and the page; keep it visible when a
+   save happens while scrolled deep into a long form. */
+#flash-area { position: sticky; top: 3.1rem; z-index: 15; }
 
 .sticky-save {
   position: sticky; bottom: 0; z-index: 10;
@@ -73,19 +97,27 @@ nav .spacer { margin-left: auto; }
 .sticky-save .danger { margin-left: auto; }
 
 table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
-th, td { border: 1px solid var(--border); padding: 0.5rem; text-align: left; }
-th { background: var(--th-bg); }
+th, td {
+  border: none; border-bottom: 1px solid var(--row-border);
+  padding: 0.5rem 0.6rem; text-align: left;
+}
+th { background: var(--th-bg); border-bottom: 2px solid var(--border); }
+/* td-scoped: several tables put the header row in the implicit tbody, so
+   row-level striping would hit headers too. */
+table tr:nth-child(even) td { background: var(--zebra); }
+table tr:hover td { background: var(--row-hover); }
 
 .flash {
   background: var(--flash-bg); border: 1px solid var(--flash-border);
-  padding: 0.5rem; margin: 0.5rem 0; border-radius: 4px;
+  padding: 0.6rem 0.8rem; margin: 0.5rem 0; border-radius: 6px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
 }
 .flash.err {
   background: var(--flash-bg-err); border-color: var(--flash-border-err);
 }
 
 form.inline { display: inline; }
-label { display: block; margin-top: 0.5rem; }
+label { display: block; margin-top: 0.7rem; }
 input:not([type=checkbox]):not([type=radio]), select, textarea {
   padding: 0.5rem; min-width: 200px; max-width: 100%;
   background: var(--surface); color: var(--text);
@@ -110,23 +142,43 @@ input:not([type=checkbox]):not([type=radio]), select, textarea {
 .btn-danger:hover { background: var(--danger-hover); border-color: var(--danger); }
 .btn-sm { padding: 0.2rem 0.5rem; font-size: 0.85rem; border-radius: 5px; }
 
+:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
 .actions { display: inline-flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; }
 
 .muted { color: var(--muted); font-size: 0.9rem; }
-.right { text-align: right; }
+.right { text-align: right; font-variant-numeric: tabular-nums; }
 
 .unit-row, .card {
   border: 1px solid var(--row-border); border-radius: 6px;
   padding: 0.75rem; margin: 1rem 0;
 }
 
+.empty-state {
+  text-align: center; padding: 1.5rem 1rem; margin: 1rem 0;
+  color: var(--muted);
+  border: 1px dashed var(--border); border-radius: 8px;
+}
+
+.loading { color: var(--muted); font-size: 0.9rem; }
+.loading::before {
+  content: ""; display: inline-block; vertical-align: -0.15em;
+  width: 0.9em; height: 0.9em; margin-right: 0.5em;
+  border: 2px solid var(--border); border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
 @media (max-width: 640px) {
   body { margin: 1rem auto; }
   nav { gap: 0.4rem 0.9rem; }
-  nav .spacer { margin-left: 0; flex-basis: 100%; margin-top: 0.3rem; }
+  .nav-user { margin-left: 0; flex-basis: 100%; justify-content: space-between; }
+  #flash-area { top: 5.4rem; }
   input:not([type=checkbox]):not([type=radio]), select, textarea {
     min-width: 0; width: 100%;
   }
   table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; white-space: nowrap; }
-  .btn-sm { padding: 0.3rem 0.55rem; }
+  .btn-sm { padding: 0.45rem 0.7rem; }
+  .sticky-save .danger { margin-left: 0; flex-basis: 100%; }
 }

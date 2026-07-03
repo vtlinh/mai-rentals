@@ -20,7 +20,7 @@ export default async function mountManageOccupancy(container, params) {
   const uid = parseInt(params[0], 10);
   clear(container);
 
-  const loading = h("p", { class: "muted" }, "Loading…");
+  const loading = h("p", { class: "loading" }, "Loading…");
   container.appendChild(loading);
 
   const data = await readAll();
@@ -57,7 +57,8 @@ export default async function mountManageOccupancy(container, params) {
   if (occs.length) {
     for (const o of occs) list.appendChild(_existingOcc(container, uid, o));
   } else {
-    list.appendChild(h("p", { class: "muted" }, "No occupancies yet."));
+    list.appendChild(h("div", { class: "empty-state" },
+      h("p", null, "No occupancies yet — add one below.")));
   }
   container.appendChild(list);
 
