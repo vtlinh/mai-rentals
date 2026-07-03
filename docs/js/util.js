@@ -115,6 +115,39 @@ export function effectiveDueDate(bill) {
   return billDueDate(bill.end_date);
 }
 
+/**
+ * Why a form value is not safe to write to the sheet as a date, or null if it
+ * is. Empty counts as valid only when `optional`; otherwise the value must be
+ * a real YYYY-MM-DD calendar date (what parseDate can read back).
+ */
+export function invalidDateMsg(value, label, optional = false) {
+  const v = String(value ?? "").trim();
+  if (!v) return optional ? null : `${label} is required.`;
+  const m = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return `${label} must be a date in YYYY-MM-DD format (got “${v}”).`;
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+  if (d.getUTCMonth() + 1 !== +m[2] || d.getUTCDate() !== +m[3]) {
+    return `${label} is not a real calendar date (got “${v}”).`;
+  }
+  return null;
+}
+
+/**
+ * Check date form values before a save. `specs` is a list of
+ * [value, label, optional?]; flashes the first problem and returns false,
+ * or returns true when everything is safe to write.
+ */
+export function datesValid(specs) {
+  for (const [value, label, optional] of specs) {
+    const msg = invalidDateMsg(value, label, optional);
+    if (msg) {
+      flash(msg, "err");
+      return false;
+    }
+  }
+  return true;
+}
+
 /** Last day of (year, month) — month is 1-based here. */
 export function lastDayOfMonth(year, month) {
   return new Date(Date.UTC(year, month, 0)).getUTCDate();

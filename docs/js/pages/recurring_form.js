@@ -13,8 +13,8 @@ import {
   appendRow, deleteRow, invalidate, nextId, readAll, updateRow,
 } from "../sheets.js";
 import {
-  asBool, asFloat, asInt, asOptInt, clear, csvFromList, flash, formatDate,
-  h, MONTH_NAMES, parseDate, parseRecurrenceConfig, WEEKDAY_NAMES,
+  asBool, asFloat, asInt, asOptInt, clear, csvFromList, datesValid, flash,
+  formatDate, h, MONTH_NAMES, parseDate, parseRecurrenceConfig, WEEKDAY_NAMES,
 } from "../util.js";
 
 export default async function mountRecurringForm(container, params, query) {
@@ -219,6 +219,10 @@ export default async function mountRecurringForm(container, params, query) {
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
+    if (!datesValid([
+      [startInput.value, "Start date"],
+      [endInput.value, "End date", true],
+    ])) return;
     saveBtn.disabled = true;
     try {
       const chosenRecurrence =
