@@ -10,8 +10,8 @@ import {
   appendRow, readAll, nextId,
 } from "../sheets.js";
 import {
-  asBool, asFloat, asInt, asOptInt, clear, effectiveDueDate, fmtMoney, h,
-  MONTH_NAMES, parseDate, parseNamesCsv, today,
+  asBool, asFloat, asInt, asOptInt, clear, effectiveDueDate, fmtDate, fmtMoney,
+  h, MONTH_NAMES, parseDate, parseNamesCsv, today,
 } from "../util.js";
 
 export default async function mountDashboard(container) {
@@ -166,7 +166,7 @@ function _render(container, data) {
 
   for (const m of months) {
     const section = h("section", { style: { marginBottom: "2rem" } });
-    section.appendChild(h("h3", null, `${m.year}-${String(m.month).padStart(2, "0")}`));
+    section.appendChild(h("h3", null, `${MONTH_NAMES[m.month - 1]} ${m.year}`));
 
     // totals[unit_name][kind] = owed; coveredTotals mirrors it with the part
     // auto-covered by the tenancy (counted as paid without a payment row).
@@ -263,8 +263,8 @@ function _render(container, data) {
       const li = h("li", null,
         `${row.bill.kind} — ${fmtMoney(row.bill.amount)}`,
       );
-      const meta = ` (period ${row.bill.start_date.toISOString().slice(0,10)} ` +
-                   `to ${row.bill.end_date.toISOString().slice(0,10)}` +
+      const meta = ` (period ${fmtDate(row.bill.start_date)} ` +
+                   `to ${fmtDate(row.bill.end_date)}` +
                    (row.bill.note ? `, ${row.bill.note}` : "") + ")";
       li.appendChild(h("span", { class: "muted" }, meta));
       ul.appendChild(li);

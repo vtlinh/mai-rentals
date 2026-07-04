@@ -15,8 +15,8 @@
 import { coversKind, splitBill, unitPersonDays } from "../billing.js";
 import { readAll } from "../sheets.js";
 import {
-  asFloat, asInt, asOptInt, clear, effectiveDueDate, flash, h, MONTH_NAMES,
-  overlapDays, parseDate, today,
+  asFloat, asInt, asOptInt, clear, effectiveDueDate, flash, fmtDate, h,
+  MONTH_NAMES, overlapDays, parseDate, today,
 } from "../util.js";
 
 const PDFMAKE_JS = "https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.10/pdfmake.min.js";
@@ -74,7 +74,7 @@ export default async function mountPdf(container) {
         fs.appendChild(h("label", { style: { display: "block" } },
           cb, " ",
           `${o.tenant_count} tenant${o.tenant_count === 1 ? "" : "s"} ` +
-          `(${o.start_date.toISOString().slice(0,10)} to ${o.end_date.toISOString().slice(0,10)})`));
+          `(${fmtDate(o.start_date)} to ${fmtDate(o.end_date)})`));
       }
     }
     form.appendChild(fs);
@@ -252,8 +252,8 @@ function _buildSection(unit, occupancy, billsForUnit, occMap, paymentsForUnit) {
   return {
     title: unit.name,
     subtitle: `${occupancy.tenant_count} tenant${occupancy.tenant_count === 1 ? "" : "s"} — ` +
-              `${occupancy.start_date.toISOString().slice(0,10)} to ` +
-              `${occupancy.end_date.toISOString().slice(0,10)} (inclusive)`,
+              `${fmtDate(occupancy.start_date)} to ` +
+              `${fmtDate(occupancy.end_date)} (inclusive)`,
     months,
     totalOwed: Math.round(totalOwed * 100) / 100,
     totalPaid: Math.round(totalPaid * 100) / 100,
@@ -288,7 +288,7 @@ async function _renderPdf(sections) {
   await _loadPdfmake();
   const content = [
     { text: "Rental statement", style: "h1" },
-    { text: `Generated ${today().toISOString().slice(0, 10)}`, color: "gray", margin: [0, 0, 0, 12] },
+    { text: `Generated ${fmtDate(today())}`, color: "gray", margin: [0, 0, 0, 12] },
   ];
 
   sections.forEach((sec, i) => {
@@ -351,6 +351,6 @@ async function _renderPdf(sections) {
     defaultStyle: { fontSize: 10 },
     pageMargins: [40, 40, 40, 40],
   };
-  const filename = `statement-${today().toISOString().slice(0, 10)}.pdf`;
+  const filename = `statement-${fmtDate(today()).replaceAll("/", "-")}.pdf`;
   window.pdfMake.createPdf(docDefinition).download(filename);
 }
