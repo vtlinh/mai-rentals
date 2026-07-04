@@ -332,6 +332,7 @@ function _parseRecurring(r) {
     active: asBool(r.active, true),
     is_credit: asBool(r.is_credit, false),
     bill_timing: (r.bill_timing || "end").trim() || "end",
+    skip_dates: r.skip_dates || "",
   };
 }
 

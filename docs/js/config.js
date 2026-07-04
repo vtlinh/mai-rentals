@@ -36,9 +36,12 @@ export const TABS = {
   bills: ["id", "kind", "amount", "start_date", "end_date", "note", "recurring_bill_id", "due_date"],
   bill_units: ["id", "bill_id", "unit_id"],
   // bill_timing: "end" (default; due the following month) | "start" (due within the period).
+  // skip_dates: CSV of periods to skip — "YYYY-MM-DD" skips the period
+  // containing that day, "YYYY-MM" skips periods beginning in that month.
   recurring_bills: [
     "id", "kind", "amount", "note", "recurrence", "recurrence_config",
     "start_date", "end_date", "active", "is_credit", "bill_timing",
+    "skip_dates",
   ],
   recurring_bill_units: ["id", "recurring_bill_id", "unit_id"],
   payments: ["id", "unit_id", "year", "month", "kind", "amount"],
