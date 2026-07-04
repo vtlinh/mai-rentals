@@ -11,7 +11,8 @@ import {
   appendRow, deleteRow, deleteRows, invalidate, nextId, readAll, updateRow,
 } from "../sheets.js";
 import {
-  asFloat, asInt, asOptInt, clear, datesValid, flash, formatDate, h, parseDate,
+  asFloat, asInt, asOptFloat, asOptInt, clear, datesValid, flash, formatDate,
+  h, parseDate,
 } from "../util.js";
 
 export default async function mountBillForm(container, params, query) {
@@ -40,6 +41,7 @@ export default async function mountBillForm(container, params, query) {
 
   let bill = null;
   let selectedUnitIds = new Set();
+  const savedPercents = new Map(); // unit_id → split_percent (numbers only)
   if (isEdit) {
     const rawBill = (data.bills || []).find((r) => asInt(r.id) === billId);
     if (!rawBill) {
@@ -57,7 +59,11 @@ export default async function mountBillForm(container, params, query) {
     };
     isCredit = bill.amount < 0;
     for (const r of (data.bill_units || [])) {
-      if (asInt(r.bill_id) === billId) selectedUnitIds.add(asInt(r.unit_id));
+      if (asInt(r.bill_id) !== billId) continue;
+      const uid = asInt(r.unit_id);
+      selectedUnitIds.add(uid);
+      const pct = asOptFloat(r.split_percent);
+      if (pct !== null) savedPercents.set(uid, pct);
     }
   }
 
@@ -115,22 +121,35 @@ export default async function mountBillForm(container, params, query) {
   });
   form.appendChild(h("label", null, "Note", noteInput));
 
-  // Unit assignment checkboxes
+  // Unit assignment checkboxes (with an optional fixed-% share per unit)
   const fs = h("fieldset", { style: { marginTop: "1rem" } },
     h("legend", null, "Assign to units"));
+  const pctInputs = new Map(); // unit_id → % input element
   if (!units.length) {
     fs.appendChild(h("p", { class: "muted" },
       "No units defined. ",
       h("a", { href: "#units/manage" }, "Add one"),
       " first."));
   } else {
+    fs.appendChild(h("p", { class: "muted", style: { marginTop: "0" } },
+      "Optionally give a unit a fixed % of the " + kindWord + ". Units with " +
+      "a % take that share (pro-rated if occupied for only part of the " +
+      "period); whatever % is left is split across the other units by " +
+      "headcount. Leave all blank for a pure headcount split."));
     for (const u of units) {
       const cb = h("input", {
         type: "checkbox", name: "unit_ids", value: String(u.id),
       });
       if (selectedUnitIds.has(u.id)) cb.checked = true;
+      const pct = h("input", {
+        type: "number", step: "0.01", min: "0", max: "100",
+        placeholder: "headcount",
+        style: { width: "6.5rem", marginLeft: "0.75rem" },
+        value: savedPercents.has(u.id) ? String(savedPercents.get(u.id)) : "",
+      });
+      pctInputs.set(u.id, pct);
       fs.appendChild(h("label",
-        { style: { display: "block" } }, cb, " ", u.name));
+        { style: { display: "block" } }, cb, " ", u.name, " ", pct, " %"));
     }
   }
   form.appendChild(fs);
@@ -178,10 +197,30 @@ export default async function mountBillForm(container, params, query) {
       [startInput.value, "Bill period start"],
       [endInput.value, "Bill period end"],
     ])) return;
+    const checkedUids = [...form.querySelectorAll("input[name='unit_ids']:checked")]
+      .map((cb) => parseInt(cb.value, 10));
+    // [unit_id, split_percent ("" = headcount)] with % inputs validated.
+    const assignments = [];
+    let pctSum = 0;
+    for (const uid of checkedUids) {
+      const raw = (pctInputs.get(uid)?.value || "").trim();
+      let pct = "";
+      if (raw !== "") {
+        pct = parseFloat(raw);
+        if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
+          flash("Unit % must be a number between 0 and 100.", "err");
+          return;
+        }
+        pctSum += pct;
+      }
+      assignments.push([uid, pct]);
+    }
+    if (pctSum > 100) {
+      flash(`Unit percentages add up to ${pctSum}% — they can't exceed 100%.`, "err");
+      return;
+    }
     saveBtn.disabled = true;
     try {
-      const checkedUids = [...form.querySelectorAll("input[name='unit_ids']:checked")]
-        .map((cb) => parseInt(cb.value, 10));
       const magnitude = Math.abs(parseFloat(amountInput.value));
       const payload = {
         kind: kindSelect.value,
@@ -201,9 +240,9 @@ export default async function mountBillForm(container, params, query) {
         // Add fresh assignments. Refresh nextId after deletes.
         const freshBu = (await readAll()).bill_units || [];
         let nextBuId = nextId(freshBu);
-        for (const uid of checkedUids) {
+        for (const [uid, pct] of assignments) {
           await appendRow("bill_units", {
-            id: nextBuId, bill_id: billId, unit_id: uid,
+            id: nextBuId, bill_id: billId, unit_id: uid, split_percent: pct,
           });
           nextBuId++;
         }
@@ -214,9 +253,9 @@ export default async function mountBillForm(container, params, query) {
         await appendRow("bills", { id: newId, ...payload, recurring_bill_id: "" });
         const freshBu = (await readAll()).bill_units || [];
         let nextBuId = nextId(freshBu);
-        for (const uid of checkedUids) {
+        for (const [uid, pct] of assignments) {
           await appendRow("bill_units", {
-            id: nextBuId, bill_id: newId, unit_id: uid,
+            id: nextBuId, bill_id: newId, unit_id: uid, split_percent: pct,
           });
           nextBuId++;
         }

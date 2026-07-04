@@ -34,7 +34,9 @@ export const TABS = {
   occupancies: ["id", "unit_id", "tenant_count", "start_date", "end_date", "covered_kinds"],
   // due_date is optional: empty → derived as the 1st of the month after end_date.
   bills: ["id", "kind", "amount", "start_date", "end_date", "note", "recurring_bill_id", "due_date"],
-  bill_units: ["id", "bill_id", "unit_id"],
+  // split_percent: optional fixed share (0–100) of the bill for this unit,
+  // pro-rated by its occupied fraction of the period; empty → headcount split.
+  bill_units: ["id", "bill_id", "unit_id", "split_percent"],
   // bill_timing: "end" (default; due the following month) | "start" (due within the period).
   // skip_dates: CSV of periods to skip — "YYYY-MM-DD" skips the period
   // containing that day, "YYYY-MM" skips periods beginning in that month.
@@ -43,7 +45,7 @@ export const TABS = {
     "start_date", "end_date", "active", "is_credit", "bill_timing",
     "skip_dates",
   ],
-  recurring_bill_units: ["id", "recurring_bill_id", "unit_id"],
+  recurring_bill_units: ["id", "recurring_bill_id", "unit_id", "split_percent"],
   payments: ["id", "unit_id", "year", "month", "kind", "amount"],
   categories: ["id", "name"],
 };

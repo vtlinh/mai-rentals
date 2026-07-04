@@ -8,9 +8,9 @@
 import { invalidate, readAll, updateRow } from "../sheets.js";
 import { deleteRecurringCascade } from "../cascade.js";
 import {
-  asBool, asFloat, asInt, asOptInt, clear, effectiveDueDate, flash, fmtDate,
-  fmtMoney, h, MONTH_NAMES, parseDate, parseRecurrenceConfig, parseSkipDates,
-  WEEKDAY_NAMES,
+  asBool, asFloat, asInt, asOptFloat, asOptInt, clear, effectiveDueDate,
+  flash, fmtDate, fmtMoney, h, MONTH_NAMES, parseDate, parseRecurrenceConfig,
+  parseSkipDates, WEEKDAY_NAMES,
 } from "../util.js";
 
 export default async function mountBills(container) {
@@ -45,7 +45,7 @@ function _renderRecurring(container, data) {
     const rid = asInt(r.recurring_bill_id);
     const uid = asInt(r.unit_id);
     if (!unitsByRb.has(rid)) unitsByRb.set(rid, []);
-    unitsByRb.get(rid).push(units.get(uid) || `unit ${uid}`);
+    unitsByRb.get(rid).push(_unitLabel(units, uid, r.split_percent));
   }
   // Generated bill counts
   const generated = new Map();
@@ -153,7 +153,7 @@ function _renderOneOff(container, data) {
     const bid = asInt(r.bill_id);
     const uid = asInt(r.unit_id);
     if (!assignsByBill.has(bid)) assignsByBill.set(bid, []);
-    assignsByBill.get(bid).push(units.get(uid) || `unit ${uid}`);
+    assignsByBill.get(bid).push(_unitLabel(units, uid, r.split_percent));
   }
 
   const tbl = h("table");
@@ -191,6 +191,13 @@ function _renderOneOff(container, data) {
     ));
   }
   container.appendChild(tbl);
+}
+
+/** "Unit A" or "Unit A (40%)" when the assignment has a fixed % share. */
+function _unitLabel(units, uid, splitPercent) {
+  const name = units.get(uid) || `unit ${uid}`;
+  const pct = asOptFloat(splitPercent);
+  return pct === null ? name : `${name} (${pct}%)`;
 }
 
 function _parseRecurring(r) {

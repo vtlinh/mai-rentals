@@ -15,6 +15,16 @@
  *     recovered and the split reduces to plain person-day proportions.
  *   • Per-unit amounts are rounded to 2 decimals.
  *   • A unit with no overlap owes $0 and is filtered out on the dashboard.
+ *
+ * Fixed-percentage assignments: an assignment may carry a `split_percent`
+ * (0–100). Such a unit owes `amount × percent × occupied fraction of the
+ * bill period` — occupied means at least one tenant present, so headcount
+ * doesn't change a %-unit's charge, but vacancy still pro-rates it (a unit
+ * occupied for half the period pays half its %; the rest is absorbed by
+ * the landlord, not redistributed). The unclaimed percentage
+ * (100 − Σ specified %) is split across the no-% units by the person-day
+ * rules above. If every assigned unit has a %, no headcount split happens;
+ * if the specified percents sum past 100 they are scaled down to 100.
  */
 import {
   addDays, lastDayOfMonth, overlapDays, parseDate, parseNamesCsv,
@@ -56,26 +66,84 @@ function unitReferencePersonDays(occupancies, bill) {
 }
 
 /**
+ * Fraction of the bill period during which the unit is occupied at all
+ * (≥1 tenant), as merged inclusive days / full period days. This is the
+ * pro-rating basis for fixed-percentage assignments: headcount changes
+ * don't move it, but vacant days do.
+ */
+export function unitOccupiedFraction(occupancies, bill) {
+  const DAY = 86400000;
+  const intervals = [];
+  for (const o of occupancies) {
+    if (!((o.tenant_count || 0) > 0)) continue;
+    const start = o.start_date instanceof Date ? o.start_date : parseDate(o.start_date);
+    const end = o.end_date instanceof Date ? o.end_date : parseDate(o.end_date);
+    if (!start || !end) continue;
+    const s = start > bill.start_date ? start : bill.start_date;
+    const e = end < bill.end_date ? end : bill.end_date;
+    if (s <= e) intervals.push([s.getTime(), e.getTime()]);
+  }
+  if (!intervals.length) return 0;
+  intervals.sort((a, b) => a[0] - b[0]);
+  let days = 0;
+  let [curS, curE] = intervals[0];
+  for (let i = 1; i < intervals.length; i++) {
+    const [s, e] = intervals[i];
+    if (s <= curE + DAY) {
+      if (e > curE) curE = e;
+    } else {
+      days += Math.round((curE - curS) / DAY) + 1;
+      [curS, curE] = [s, e];
+    }
+  }
+  days += Math.round((curE - curS) / DAY) + 1;
+  return Math.min(1, days / billPeriodDays(bill));
+}
+
+/**
  * Split a bill across its assigned units, pro-rated against the full period.
  *   bill: { amount, start_date (Date), end_date (Date),
- *           assignments: [{ unit_id, unit: { id, name } }, …] }
+ *           assignments: [{ unit_id, unit: { id, name }, split_percent? }, …] }
  *   occMap: { unit_id → [occupancy, …] }
  * Returns [{ unit_id, unit_name, person_days, amount }, …]
+ *
+ * Assignments with a numeric split_percent take that % of the amount
+ * (× their occupied fraction of the period); the remaining percentage is
+ * split across the other assignments by pro-rated person-days.
  */
 export function splitBill(bill, occMap) {
+  const percentByUnit = new Map();
+  let percentSum = 0;
+  for (const a of bill.assignments) {
+    const p = a.split_percent;
+    if (p === null || p === undefined || !Number.isFinite(Number(p))) continue;
+    const clamped = Math.min(Math.max(Number(p), 0), 100);
+    percentByUnit.set(a.unit_id, clamped);
+    percentSum += clamped;
+  }
+  // Never bill more than the full amount, even on bad data.
+  const scale = percentSum > 100 ? 100 / percentSum : 1;
+  const remainder = bill.amount * (1 - Math.min(percentSum, 100) / 100);
+
   const pdByUnit = new Map();
-  const refByUnit = new Map();
+  let referenceTotal = 0;
   for (const a of bill.assignments) {
     const occs = occMap[a.unit_id] || [];
     pdByUnit.set(a.unit_id, unitPersonDays(occs, bill));
-    refByUnit.set(a.unit_id, unitReferencePersonDays(occs, bill));
+    if (!percentByUnit.has(a.unit_id)) {
+      referenceTotal += unitReferencePersonDays(occs, bill);
+    }
   }
-  let referenceTotal = 0;
-  for (const v of refByUnit.values()) referenceTotal += v;
   const shares = [];
   for (const a of bill.assignments) {
     const pd = pdByUnit.get(a.unit_id) || 0;
-    const amount = referenceTotal > 0 ? (pd / referenceTotal) * bill.amount : 0;
+    let amount;
+    if (percentByUnit.has(a.unit_id)) {
+      const frac = unitOccupiedFraction(occMap[a.unit_id] || [], bill);
+      amount = bill.amount * ((percentByUnit.get(a.unit_id) * scale) / 100) * frac;
+    } else {
+      amount = referenceTotal > 0 ? (pd / referenceTotal) * remainder : 0;
+    }
     shares.push({
       unit_id: a.unit_id,
       unit_name: a.unit ? a.unit.name : "",
