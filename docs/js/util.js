@@ -80,6 +80,18 @@ export function formatDate(d) {
   return `${y}-${m}-${day}`;
 }
 
+/**
+ * User-facing date display: MM/DD/YYYY. Storage (sheet cells) and
+ * <input type="date"> values must stay YYYY-MM-DD (`formatDate`); every
+ * date rendered as text for the user goes through this instead.
+ */
+export function fmtDate(d) {
+  if (!d) return "";
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${m}/${day}/${d.getUTCFullYear()}`;
+}
+
 export function today() {
   const d = new Date();
   return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
@@ -132,7 +144,7 @@ export function invalidDateMsg(value, label, optional = false) {
   const v = String(value ?? "").trim();
   if (!v) return optional ? null : `${label} is required.`;
   const m = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!m) return `${label} must be a date in YYYY-MM-DD format (got “${v}”).`;
+  if (!m) return `${label} must be a valid calendar date (got “${v}”).`;
   const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
   if (d.getUTCMonth() + 1 !== +m[2] || d.getUTCDate() !== +m[3]) {
     return `${label} is not a real calendar date (got “${v}”).`;

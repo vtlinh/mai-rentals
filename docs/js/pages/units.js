@@ -4,7 +4,7 @@
  * button at the top opens the rename/add page.
  */
 import { readAll } from "../sheets.js";
-import { asInt, clear, formatDate, h, parseDate } from "../util.js";
+import { asInt, clear, fmtDate, h, parseDate } from "../util.js";
 
 export default async function mountUnits(container) {
   clear(container);
@@ -60,8 +60,8 @@ export default async function mountUnits(container) {
       for (const o of occs) {
         tbl.appendChild(h("tr", null,
           h("td", null, String(o.tenant_count)),
-          h("td", null, formatDate(o.start_date)),
-          h("td", null, formatDate(o.end_date)),
+          h("td", null, fmtDate(o.start_date)),
+          h("td", null, fmtDate(o.end_date)),
         ));
       }
     } else {

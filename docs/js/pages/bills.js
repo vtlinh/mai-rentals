@@ -8,8 +8,8 @@
 import { invalidate, readAll, updateRow } from "../sheets.js";
 import { deleteRecurringCascade } from "../cascade.js";
 import {
-  asBool, asFloat, asInt, asOptInt, clear, effectiveDueDate, flash, fmtMoney, h,
-  MONTH_NAMES, parseDate, parseRecurrenceConfig, WEEKDAY_NAMES,
+  asBool, asFloat, asInt, asOptInt, clear, effectiveDueDate, flash, fmtDate,
+  fmtMoney, h, MONTH_NAMES, parseDate, parseRecurrenceConfig, WEEKDAY_NAMES,
 } from "../util.js";
 
 export default async function mountBills(container) {
@@ -71,7 +71,7 @@ function _renderRecurring(container, data) {
     const scheduleCell = h("td", null, cfgDisplay);
     if (rb.end_date) {
       scheduleCell.appendChild(h("span", { class: "muted" },
-        ` until ${rb.end_date.toISOString().slice(0, 10)}`));
+        ` until ${fmtDate(rb.end_date)}`));
     }
     if (rb.bill_timing === "start") {
       scheduleCell.appendChild(h("span", { class: "muted" }, " · billed at start"));
@@ -160,13 +160,13 @@ function _renderOneOff(container, data) {
     h("th", null, ""),
   ));
 
-  const iso = (d) => (d ? d.toISOString().slice(0, 10) : "—");
+  const disp = (d) => (d ? fmtDate(d) : "—");
   bills.sort((a, b) => (b.end_date?.getTime() || 0) - (a.end_date?.getTime() || 0));
   for (const b of bills) {
-    const due = iso(effectiveDueDate(b));
+    const due = disp(effectiveDueDate(b));
     tbl.appendChild(h("tr", null,
       h("td", null, b.kind),
-      h("td", null, `${iso(b.start_date)} → ${iso(b.end_date)}`),
+      h("td", null, `${disp(b.start_date)} → ${disp(b.end_date)}`),
       h("td", null, due),
       h("td", { class: "right" }, b.amount < 0
         ? h("span", { style: { color: "var(--accent-green)" } }, fmtMoney(b.amount))

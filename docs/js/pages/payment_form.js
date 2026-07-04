@@ -50,7 +50,7 @@ export default async function mountPaymentForm(container, params) {
 
   container.appendChild(h("h1", null, existing ? "Edit payment" : "Record payment"));
   container.appendChild(h("p", { class: "muted" },
-    `${unit.name} · ${kind} · ${year}-${String(month).padStart(2, "0")}`,
+    `${unit.name} · ${kind} · ${MONTH_NAMES[month - 1]} ${year}`,
     h("br"),
     "Total owed: ", h("strong", null, fmtMoney(owed))));
 
