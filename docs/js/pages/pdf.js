@@ -15,8 +15,8 @@
 import { coversKind, splitBill, unitPersonDays } from "../billing.js";
 import { readAll } from "../sheets.js";
 import {
-  asFloat, asInt, asOptInt, clear, effectiveDueDate, flash, fmtDate, h,
-  MONTH_NAMES, overlapDays, parseDate, today,
+  asFloat, asInt, asOptFloat, asOptInt, clear, effectiveDueDate, flash,
+  fmtDate, h, MONTH_NAMES, overlapDays, parseDate, today,
 } from "../util.js";
 
 const PDFMAKE_JS = "https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.10/pdfmake.min.js";
@@ -131,7 +131,10 @@ function _buildSections(data, pairs) {
   for (const r of (data.bill_units || [])) {
     const bid = asInt(r.bill_id);
     if (!assignsByBill.has(bid)) assignsByBill.set(bid, []);
-    assignsByBill.get(bid).push(asInt(r.unit_id));
+    assignsByBill.get(bid).push({
+      unit_id: asInt(r.unit_id),
+      split_percent: asOptFloat(r.split_percent),
+    });
   }
   const billsByUnit = new Map();
   const allBills = (data.bills || []).map((r) => ({
@@ -141,11 +144,11 @@ function _buildSections(data, pairs) {
     due_date: r.due_date || "",
   })).filter((b) => b.start_date && b.end_date);
   const billById = new Map(allBills.map((b) => [b.id, b]));
-  for (const [bid, uids] of assignsByBill) {
-    for (const uid of uids) {
-      if (!billsByUnit.has(uid)) billsByUnit.set(uid, []);
+  for (const [bid, assigns] of assignsByBill) {
+    for (const a of assigns) {
+      if (!billsByUnit.has(a.unit_id)) billsByUnit.set(a.unit_id, []);
       const b = billById.get(bid);
-      if (b) billsByUnit.get(uid).push(b);
+      if (b) billsByUnit.get(a.unit_id).push(b);
     }
   }
   const paymentsByUnit = new Map();
@@ -163,13 +166,15 @@ function _buildSections(data, pairs) {
     const billsForUnit = billsByUnit.get(uid) || [];
     // occMap must cover every unit on those bills, not just the target.
     const relatedUnitIds = new Set([uid]);
-    for (const b of billsForUnit) for (const u of (assignsByBill.get(b.id) || [])) relatedUnitIds.add(u);
+    for (const b of billsForUnit) for (const a of (assignsByBill.get(b.id) || [])) relatedUnitIds.add(a.unit_id);
     const occMap = {};
     for (const u of relatedUnitIds) occMap[u] = occByUnit.get(u) || [];
     // attach assignments (with unit refs) to each bill so splitBill works
     for (const b of billsForUnit) {
-      b.assignments = (assignsByBill.get(b.id) || []).map((u) => ({
-        unit_id: u, unit: { id: u, name: unitsById.get(u) || "" },
+      b.assignments = (assignsByBill.get(b.id) || []).map((a) => ({
+        unit_id: a.unit_id,
+        unit: { id: a.unit_id, name: unitsById.get(a.unit_id) || "" },
+        split_percent: a.split_percent,
       }));
     }
     sections.push(_buildSection(

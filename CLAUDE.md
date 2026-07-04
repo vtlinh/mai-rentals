@@ -66,6 +66,16 @@ Keep these true when changing the split logic in `billing.js`:
   person-day split.
 - Per-unit amounts are rounded to 2 decimals.
 - If a unit has no overlap, it owes $0 and is hidden on the dashboard.
+- **Fixed-percentage assignments**: a `bill_units` / `recurring_bill_units`
+  row may carry an optional `split_percent` (0–100). Such a unit owes
+  `amount × % × its occupied fraction of the bill period` (occupied = ≥1
+  tenant present, so headcount changes don't move a %-unit's charge but
+  vacant days still pro-rate it; the unclaimed part goes to the landlord,
+  not the other units). The leftover percentage (100 − Σ specified %) is
+  split across the no-% units by the person-day rules above. If every
+  assigned unit has a %, no headcount split happens; percents summing past
+  100 are scaled down to 100 (forms validate ≤ 100). Recurring templates
+  copy each unit's % onto generated bills at generation time.
 
 ## Dashboard rendering
 

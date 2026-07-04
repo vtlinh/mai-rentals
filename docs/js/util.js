@@ -35,6 +35,12 @@ export function asFloat(v, dflt = 0) {
   return Number.isFinite(n) ? n : dflt;
 }
 
+export function asOptFloat(v) {
+  if (v === null || v === undefined || String(v).trim() === "") return null;
+  const n = parseFloat(String(v).trim());
+  return Number.isFinite(n) ? n : null;
+}
+
 /** Parse recurrence_config from sheet CSV (e.g. "1,15") to [1, 15]. */
 export function parseRecurrenceConfig(raw) {
   if (!raw) return [];

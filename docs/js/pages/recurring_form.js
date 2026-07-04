@@ -15,9 +15,9 @@ import {
 import { deleteRecurringCascade } from "../cascade.js";
 import { isPeriodSkipped } from "../billing.js";
 import {
-  asBool, asFloat, asInt, asOptInt, clear, csvFromList, datesValid, flash,
-  formatDate, h, lastDayOfMonth, MONTH_NAMES, parseDate, parseRecurrenceConfig,
-  parseSkipDates, WEEKDAY_NAMES,
+  asBool, asFloat, asInt, asOptFloat, asOptInt, clear, csvFromList,
+  datesValid, flash, formatDate, h, lastDayOfMonth, MONTH_NAMES, parseDate,
+  parseRecurrenceConfig, parseSkipDates, WEEKDAY_NAMES,
 } from "../util.js";
 
 export default async function mountRecurringForm(container, params, query) {
@@ -40,6 +40,7 @@ export default async function mountRecurringForm(container, params, query) {
 
   let rb = null;
   let selectedUnitIds = new Set();
+  const savedPercents = new Map(); // unit_id → split_percent (numbers only)
   let isCredit = (query && query.get("credit") === "1");
 
   if (isEdit) {
@@ -61,7 +62,11 @@ export default async function mountRecurringForm(container, params, query) {
     };
     isCredit = rb.is_credit;
     for (const r of (data.recurring_bill_units || [])) {
-      if (asInt(r.recurring_bill_id) === rid) selectedUnitIds.add(asInt(r.unit_id));
+      if (asInt(r.recurring_bill_id) !== rid) continue;
+      const uid = asInt(r.unit_id);
+      selectedUnitIds.add(uid);
+      const pct = asOptFloat(r.split_percent);
+      if (pct !== null) savedPercents.set(uid, pct);
     }
   }
 
@@ -239,17 +244,33 @@ export default async function mountRecurringForm(container, params, query) {
   ));
   form.appendChild(skipFs);
 
-  // ---- Unit assignment ----
+  // ---- Unit assignment (with an optional fixed-% share per unit) ----
   const unitFs = h("fieldset", { style: { marginTop: "1rem" } },
     h("legend", null, "Assign to units"));
+  const pctInputs = new Map(); // unit_id → % input element
   if (!units.length) {
     unitFs.appendChild(h("p", { class: "muted" },
       "No units defined. ", h("a", { href: "#units/manage" }, "Add one"), " first."));
   } else {
+    unitFs.appendChild(h("p", { class: "muted", style: { marginTop: "0" } },
+      "Optionally give a unit a fixed % of each generated " +
+      label.toLowerCase() + ". Units with a % take that share (pro-rated if " +
+      "occupied for only part of the period); whatever % is left is split " +
+      "across the other units by headcount. Leave all blank for a pure " +
+      "headcount split. Changing a % applies to entries generated from now " +
+      "on, not ones already created."));
     for (const u of units) {
       const cb = h("input", { type: "checkbox", name: "unit_ids", value: String(u.id) });
       if (selectedUnitIds.has(u.id)) cb.checked = true;
-      unitFs.appendChild(h("label", { style: { display: "block" } }, cb, " ", u.name));
+      const pct = h("input", {
+        type: "number", step: "0.01", min: "0", max: "100",
+        placeholder: "headcount",
+        style: { width: "6.5rem", marginLeft: "0.75rem" },
+        value: savedPercents.has(u.id) ? String(savedPercents.get(u.id)) : "",
+      });
+      pctInputs.set(u.id, pct);
+      unitFs.appendChild(h("label",
+        { style: { display: "block" } }, cb, " ", u.name, " ", pct, " %"));
     }
   }
   form.appendChild(unitFs);
@@ -295,13 +316,33 @@ export default async function mountRecurringForm(container, params, query) {
       [startInput.value, "Start date"],
       [endInput.value, "End date", true],
     ])) return;
+    const checkedUids = [...form.querySelectorAll("input[name='unit_ids']:checked")]
+      .map((cb) => parseInt(cb.value, 10));
+    // [unit_id, split_percent ("" = headcount)] with % inputs validated.
+    const assignments = [];
+    let pctSum = 0;
+    for (const uid of checkedUids) {
+      const raw = (pctInputs.get(uid)?.value || "").trim();
+      let pct = "";
+      if (raw !== "") {
+        pct = parseFloat(raw);
+        if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
+          flash("Unit % must be a number between 0 and 100.", "err");
+          return;
+        }
+        pctSum += pct;
+      }
+      assignments.push([uid, pct]);
+    }
+    if (pctSum > 100) {
+      flash(`Unit percentages add up to ${pctSum}% — they can't exceed 100%.`, "err");
+      return;
+    }
     saveBtn.disabled = true;
     try {
       const chosenRecurrence =
         form.querySelector("input[name='recurrence']:checked").value;
       const configList = _readConfig(form, chosenRecurrence);
-      const checkedUids = [...form.querySelectorAll("input[name='unit_ids']:checked")]
-        .map((cb) => parseInt(cb.value, 10));
       const amount = parseFloat(amountInput.value);
       const billTiming = timingSelect.value === "start" ? "start" : "end";
       const payload = {
@@ -328,9 +369,9 @@ export default async function mountRecurringForm(container, params, query) {
             .map((r) => asInt(r.id)));
         const fresh2 = await readAll();
         let nextRbu = nextId(fresh2.recurring_bill_units || []);
-        for (const uid of checkedUids) {
+        for (const [uid, pct] of assignments) {
           await appendRow("recurring_bill_units",
-            { id: nextRbu, recurring_bill_id: rid, unit_id: uid });
+            { id: nextRbu, recurring_bill_id: rid, unit_id: uid, split_percent: pct });
           nextRbu++;
         }
         // Delete already-generated bills whose period is now skipped (their
@@ -376,9 +417,9 @@ export default async function mountRecurringForm(container, params, query) {
         await appendRow("recurring_bills", { id: newId, ...payload });
         const fresh = await readAll();
         let nextRbu = nextId(fresh.recurring_bill_units || []);
-        for (const uid of checkedUids) {
+        for (const [uid, pct] of assignments) {
           await appendRow("recurring_bill_units",
-            { id: nextRbu, recurring_bill_id: newId, unit_id: uid });
+            { id: nextRbu, recurring_bill_id: newId, unit_id: uid, split_percent: pct });
           nextRbu++;
         }
         invalidate();

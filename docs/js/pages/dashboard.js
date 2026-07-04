@@ -10,8 +10,8 @@ import {
   appendRow, readAll, nextId,
 } from "../sheets.js";
 import {
-  asBool, asFloat, asInt, asOptInt, clear, effectiveDueDate, fmtDate, fmtMoney,
-  h, MONTH_NAMES, parseDate, parseNamesCsv, today,
+  asBool, asFloat, asInt, asOptFloat, asOptInt, clear, effectiveDueDate,
+  fmtDate, fmtMoney, h, MONTH_NAMES, parseDate, parseNamesCsv, today,
 } from "../util.js";
 
 export default async function mountDashboard(container) {
@@ -43,9 +43,12 @@ async function _applyRecurring(data) {
       existingBills.filter((b) => b.recurring_bill_id === rb.id && b.start_date)
         .map((b) => b.start_date.toISOString().slice(0, 10))
     );
-    const unitIds = (data.recurring_bill_units || [])
+    const rbUnits = (data.recurring_bill_units || [])
       .filter((r) => asInt(r.recurring_bill_id) === rb.id)
-      .map((r) => asInt(r.unit_id));
+      .map((r) => ({
+        unit_id: asInt(r.unit_id),
+        split_percent: String(r.split_percent ?? "").trim(),
+      }));
     const amount = rb.is_credit ? -rb.amount : rb.amount;
     for (const [start, end] of recurringInstances(rb, t)) {
       const key = start.toISOString().slice(0, 10);
@@ -66,13 +69,15 @@ async function _applyRecurring(data) {
         recurring_bill_id: rb.id, due_date: dueDate,
       }});
       existingStarts.add(key);
-      for (const uid of unitIds) {
+      for (const ru of rbUnits) {
         const buId = nextId(data.bill_units);
         data.bill_units.push({
-          id: String(buId), bill_id: String(newBillId), unit_id: String(uid),
+          id: String(buId), bill_id: String(newBillId),
+          unit_id: String(ru.unit_id), split_percent: ru.split_percent,
         });
         writes.push({ tab: "bill_units", row: {
-          id: buId, bill_id: newBillId, unit_id: uid,
+          id: buId, bill_id: newBillId, unit_id: ru.unit_id,
+          split_percent: ru.split_percent,
         }});
       }
     }
@@ -105,6 +110,7 @@ function _render(container, data) {
     billAssignments.get(bid).push({
       unit_id: uid,
       unit: unitsById.get(uid) || { id: uid, name: `unit ${uid}` },
+      split_percent: asOptFloat(r.split_percent),
     });
   }
   for (const b of bills) b.assignments = billAssignments.get(b.id) || [];

@@ -12,8 +12,8 @@ import {
 } from "../sheets.js";
 import { splitBill } from "../billing.js";
 import {
-  asFloat, asInt, asOptInt, clear, effectiveDueDate, flash, fmtMoney, h,
-  MONTH_NAMES, parseDate,
+  asFloat, asInt, asOptFloat, asOptInt, clear, effectiveDueDate, flash,
+  fmtMoney, h, MONTH_NAMES, parseDate,
 } from "../util.js";
 
 export default async function mountPaymentForm(container, params) {
@@ -106,7 +106,10 @@ function _computeOwed(data, unitId, year, month, kind) {
   for (const r of (data.bill_units || [])) {
     const bid = asInt(r.bill_id);
     if (!assignsByBill.has(bid)) assignsByBill.set(bid, []);
-    assignsByBill.get(bid).push(asInt(r.unit_id));
+    assignsByBill.get(bid).push({
+      unit_id: asInt(r.unit_id),
+      split_percent: asOptFloat(r.split_percent),
+    });
   }
   // Bills of this kind whose due date is (year, month).
   const bills = (data.bills || [])
@@ -124,7 +127,7 @@ function _computeOwed(data, unitId, year, month, kind) {
   if (!bills.length) return 0;
 
   const relatedUnitIds = new Set();
-  for (const b of bills) for (const uid of (assignsByBill.get(b.id) || [])) relatedUnitIds.add(uid);
+  for (const b of bills) for (const a of (assignsByBill.get(b.id) || [])) relatedUnitIds.add(a.unit_id);
   const occMap = {};
   for (const r of (data.occupancies || [])) {
     const uid = asInt(r.unit_id);
@@ -139,8 +142,10 @@ function _computeOwed(data, unitId, year, month, kind) {
 
   let total = 0;
   for (const b of bills) {
-    b.assignments = (assignsByBill.get(b.id) || []).map((uid) => ({
-      unit_id: uid, unit: { id: uid, name: units.get(uid) || "" },
+    b.assignments = (assignsByBill.get(b.id) || []).map((a) => ({
+      unit_id: a.unit_id,
+      unit: { id: a.unit_id, name: units.get(a.unit_id) || "" },
+      split_percent: a.split_percent,
     }));
     for (const sh of splitBill(b, occMap)) {
       if (sh.unit_id === unitId) total += sh.amount;
