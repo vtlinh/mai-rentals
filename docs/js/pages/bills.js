@@ -9,7 +9,8 @@ import { invalidate, readAll, updateRow } from "../sheets.js";
 import { deleteRecurringCascade } from "../cascade.js";
 import {
   asBool, asFloat, asInt, asOptInt, clear, effectiveDueDate, flash, fmtDate,
-  fmtMoney, h, MONTH_NAMES, parseDate, parseRecurrenceConfig, WEEKDAY_NAMES,
+  fmtMoney, h, MONTH_NAMES, parseDate, parseRecurrenceConfig, parseSkipDates,
+  WEEKDAY_NAMES,
 } from "../util.js";
 
 export default async function mountBills(container) {
@@ -75,6 +76,11 @@ function _renderRecurring(container, data) {
     }
     if (rb.bill_timing === "start") {
       scheduleCell.appendChild(h("span", { class: "muted" }, " · billed at start"));
+    }
+    const skipCount = parseSkipDates(rb.skip_dates).length;
+    if (skipCount) {
+      scheduleCell.appendChild(h("span", { class: "muted" },
+        ` · ${skipCount} skipped period${skipCount === 1 ? "" : "s"}`));
     }
     const kindWord = rb.is_credit ? "credit" : "bill";
     const actions = h("span", { class: "actions" },
@@ -200,6 +206,7 @@ function _parseRecurring(r) {
     active: asBool(r.active, true),
     is_credit: asBool(r.is_credit, false),
     bill_timing: (r.bill_timing || "end").trim() || "end",
+    skip_dates: r.skip_dates || "",
   };
 }
 

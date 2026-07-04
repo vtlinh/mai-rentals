@@ -45,6 +45,18 @@ export function parseRecurrenceConfig(raw) {
     .filter((n) => Number.isFinite(n));
 }
 
+/**
+ * Parse skip_dates from sheet CSV into validated tokens: "YYYY-MM-DD" (skip
+ * the recurring period containing that day) or "YYYY-MM" (skip periods
+ * beginning in that month). Malformed entries are dropped.
+ */
+export function parseSkipDates(raw) {
+  if (!raw) return [];
+  return String(raw).split(",")
+    .map((s) => s.trim())
+    .filter((s) => /^\d{4}-(0[1-9]|1[0-2])(-\d{2})?$/.test(s));
+}
+
 /** Parse a CSV cell of names ("water, gas") into a trimmed string array. */
 export function parseNamesCsv(raw) {
   if (!raw) return [];

@@ -18,7 +18,7 @@
  */
 import {
   addDays, lastDayOfMonth, overlapDays, parseDate, parseNamesCsv,
-  parseRecurrenceConfig,
+  parseRecurrenceConfig, parseSkipDates,
 } from "./util.js";
 
 export function unitPersonDays(occupancies, bill) {
@@ -117,10 +117,29 @@ export function coveredFraction(occupancies, bill) {
 // ---------------- Recurring-bill generation ----------------
 
 /**
+ * Whether a generated period [start, end] is suppressed by one of the
+ * template's skip tokens (see parseSkipDates):
+ *   • "YYYY-MM-DD" skips the period that contains that day.
+ *   • "YYYY-MM"    skips periods that begin in that month.
+ */
+export function isPeriodSkipped(start, end, skipDates) {
+  for (const token of skipDates) {
+    if (token.length === 7) {
+      if (start.toISOString().slice(0, 7) === token) return true;
+    } else {
+      const d = parseDate(token);
+      if (d && d >= start && d <= end) return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Walk every period that should be generated for `rb` up to `today` (inclusive)
- * and return [(periodStart, periodEnd), …]. Returns periods that have not yet
- * passed; the caller is responsible for deduplicating against bills already
- * created (keyed by start_date).
+ * and return [(periodStart, periodEnd), …], minus any period suppressed by
+ * rb.skip_dates. Returns periods that have not yet passed; the caller is
+ * responsible for deduplicating against bills already created (keyed by
+ * start_date).
  *
  * Deduplication anchor per recurrence:
  *   • daily  → single day
@@ -129,6 +148,16 @@ export function coveredFraction(occupancies, bill) {
  *   • yearly  → full calendar month of each selected month
  */
 export function recurringInstances(rb, today) {
+  const skips = Array.isArray(rb.skip_dates)
+    ? rb.skip_dates
+    : parseSkipDates(rb.skip_dates);
+  const all = _allInstances(rb, today);
+  return skips.length
+    ? all.filter(([s, e]) => !isPeriodSkipped(s, e, skips))
+    : all;
+}
+
+function _allInstances(rb, today) {
   const start = rb.start_date instanceof Date ? rb.start_date : parseDate(rb.start_date);
   const config = Array.isArray(rb.recurrence_config)
     ? rb.recurrence_config

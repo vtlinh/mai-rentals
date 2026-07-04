@@ -13,9 +13,11 @@ import {
   appendRow, deleteRows, invalidate, nextId, readAll, updateRow,
 } from "../sheets.js";
 import { deleteRecurringCascade } from "../cascade.js";
+import { isPeriodSkipped } from "../billing.js";
 import {
   asBool, asFloat, asInt, asOptInt, clear, csvFromList, datesValid, flash,
-  formatDate, h, MONTH_NAMES, parseDate, parseRecurrenceConfig, WEEKDAY_NAMES,
+  formatDate, h, lastDayOfMonth, MONTH_NAMES, parseDate, parseRecurrenceConfig,
+  parseSkipDates, WEEKDAY_NAMES,
 } from "../util.js";
 
 export default async function mountRecurringForm(container, params, query) {
@@ -55,6 +57,7 @@ export default async function mountRecurringForm(container, params, query) {
       active: asBool(raw.active, true),
       is_credit: asBool(raw.is_credit, false),
       bill_timing: (raw.bill_timing || "end").trim() || "end",
+      skip_dates: parseSkipDates(raw.skip_dates),
     };
     isCredit = rb.is_credit;
     for (const r of (data.recurring_bill_units || [])) {
@@ -168,6 +171,74 @@ export default async function mountRecurringForm(container, params, query) {
   for (const key of ["weekly", "monthly", "yearly"]) fs.appendChild(cfgSections[key]);
   form.appendChild(fs);
 
+  // ---- Skip periods ----
+  let skipDates = rb ? [...rb.skip_dates] : [];
+  const skipFs = h("fieldset", { style: { marginTop: "1rem" } },
+    h("legend", null, "Skip periods"),
+    h("p", { class: "muted" },
+      `Periods listed here are never billed — use this when the ${label.toLowerCase()} ` +
+      "didn’t apply. Skip a day to drop the period containing it, or a month " +
+      "to drop periods beginning in that month. Saving also removes " +
+      "already-generated entries in skipped periods."));
+  const skipList = h("div", {
+    style: { display: "flex", gap: "0.4rem", flexWrap: "wrap", marginBottom: "0.75rem" },
+  });
+  skipFs.appendChild(skipList);
+  const renderSkips = () => {
+    clear(skipList);
+    if (!skipDates.length) {
+      skipList.appendChild(h("span", { class: "muted" }, "No skipped periods."));
+      return;
+    }
+    for (const token of skipDates) {
+      skipList.appendChild(h("span", {
+        style: {
+          padding: "0.2rem 0.5rem", border: "1px solid var(--border)",
+          borderRadius: "4px",
+        },
+      }, _skipLabel(token), " ", h("button", {
+        type: "button", "aria-label": `Remove ${_skipLabel(token)}`,
+        style: { border: "none", background: "none", cursor: "pointer", padding: "0" },
+        onclick: () => {
+          skipDates = skipDates.filter((t) => t !== token);
+          renderSkips();
+        },
+      }, "✕")));
+    }
+  };
+  renderSkips();
+  const addSkip = (input) => {
+    const token = input.value.trim();
+    if (!_validSkipToken(token)) {
+      flash("Enter a valid day (YYYY-MM-DD) or month (YYYY-MM) to skip.", "err");
+      return;
+    }
+    if (!skipDates.includes(token)) {
+      skipDates.push(token);
+      skipDates.sort();
+      renderSkips();
+    }
+    input.value = "";
+  };
+  const skipDayInput = h("input", { type: "date" });
+  const skipMonthInput = h("input", { type: "month", placeholder: "YYYY-MM" });
+  skipFs.appendChild(h("div",
+    { style: { display: "flex", gap: "1.5rem", flexWrap: "wrap" } },
+    h("label", { style: { margin: "0" } }, "Day", skipDayInput,
+      h("button", {
+        class: "btn-secondary btn-sm", type: "button",
+        style: { marginTop: "0.3rem" },
+        onclick: () => addSkip(skipDayInput),
+      }, "Skip this day")),
+    h("label", { style: { margin: "0" } }, "Month", skipMonthInput,
+      h("button", {
+        class: "btn-secondary btn-sm", type: "button",
+        style: { marginTop: "0.3rem" },
+        onclick: () => addSkip(skipMonthInput),
+      }, "Skip this month")),
+  ));
+  form.appendChild(skipFs);
+
   // ---- Unit assignment ----
   const unitFs = h("fieldset", { style: { marginTop: "1rem" } },
     h("legend", null, "Assign to units"));
@@ -244,6 +315,7 @@ export default async function mountRecurringForm(container, params, query) {
         active: activeCb.checked,
         is_credit: isCredit,
         bill_timing: billTiming,
+        skip_dates: skipDates.join(","),
       };
 
       if (isEdit) {
@@ -261,10 +333,26 @@ export default async function mountRecurringForm(container, params, query) {
             { id: nextRbu, recurring_bill_id: rid, unit_id: uid });
           nextRbu++;
         }
+        // Delete already-generated bills whose period is now skipped (their
+        // unit assignments first, so a mid-delete failure never orphans them).
+        const skippedIds = new Set();
+        for (const b of (fresh2.bills || [])) {
+          if (asOptInt(b.recurring_bill_id) !== rid) continue;
+          const s = parseDate(b.start_date);
+          const en = parseDate(b.end_date);
+          if (s && en && isPeriodSkipped(s, en, skipDates)) skippedIds.add(asInt(b.id));
+        }
+        if (skippedIds.size) {
+          await deleteRows("bill_units", (fresh2.bill_units || [])
+            .filter((bu) => skippedIds.has(asInt(bu.bill_id)))
+            .map((bu) => asInt(bu.id)));
+          await deleteRows("bills", [...skippedIds]);
+        }
         // Re-sign generated bills if credit flag changed.
         if (isCredit !== rb.is_credit) {
           const signed = isCredit ? -Math.abs(amount) : Math.abs(amount);
           for (const b of (fresh2.bills || [])) {
+            if (skippedIds.has(asInt(b.id))) continue;
             if (asOptInt(b.recurring_bill_id) === rid) {
               await updateRow("bills", asInt(b.id), { amount: signed });
             }
@@ -274,6 +362,7 @@ export default async function mountRecurringForm(container, params, query) {
         // dashboard month they land in follows the new setting.
         if (billTiming !== rb.bill_timing) {
           for (const b of (fresh2.bills || [])) {
+            if (skippedIds.has(asInt(b.id))) continue;
             if (asOptInt(b.recurring_bill_id) === rid) {
               const due = billTiming === "start" ? (b.start_date || "") : "";
               await updateRow("bills", asInt(b.id), { due_date: due });
@@ -322,6 +411,26 @@ function _checkboxGrid(name, items, selected, helpText) {
   }
   wrap.appendChild(grid);
   return wrap;
+}
+
+/** Human label for a skip token: "2026-06-05" → "June 5, 2026"; "2026-06" → "June 2026". */
+function _skipLabel(token) {
+  const [y, m, d] = token.split("-");
+  const name = MONTH_NAMES[parseInt(m, 10) - 1] || m;
+  return d ? `${name} ${parseInt(d, 10)}, ${y}` : `${name} ${y}`;
+}
+
+/** A real calendar day "YYYY-MM-DD" or month "YYYY-MM". */
+function _validSkipToken(token) {
+  const m = token.match(/^(\d{4})-(\d{2})(?:-(\d{2}))?$/);
+  if (!m) return false;
+  const month = parseInt(m[2], 10);
+  if (month < 1 || month > 12) return false;
+  if (m[3] !== undefined) {
+    const day = parseInt(m[3], 10);
+    if (day < 1 || day > lastDayOfMonth(parseInt(m[1], 10), month)) return false;
+  }
+  return true;
 }
 
 function _showConfig(sections, recurrence) {
